@@ -1,0 +1,417 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { 
+  Plus, 
+  Users, 
+  TrendingUp, 
+  Calendar
+} from 'lucide-react';
+import axios from '../utils/axios';
+import toast from 'react-hot-toast';
+import LoadingSpinner from '../components/LoadingSpinner';
+
+const Agent1Dashboard = () => {
+  const { user } = useAuth();
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    budget: '',
+    source: 'other',
+    company: '',
+    jobTitle: '',
+    location: '',
+    requirements: '',
+    notes: ''
+  });
+
+  const [stats, setStats] = useState({
+    totalLeads: 0,
+    hotLeads: 0,
+    warmLeads: 0,
+    coldLeads: 0
+  });
+
+  useEffect(() => {
+    fetchLeads();
+    
+    // Listen for real-time updates
+    const handleRefresh = () => fetchLeads();
+    window.addEventListener('refreshLeads', handleRefresh);
+    
+    return () => {
+      window.removeEventListener('refreshLeads', handleRefresh);
+    };
+  }, []);
+
+  const fetchLeads = async () => {
+    try {
+      const response = await axios.get('/api/leads?page=1&limit=10');
+      const leadsData = response.data.data.leads;
+      setLeads(leadsData);
+      
+      // Calculate stats
+      const total = leadsData.length;
+      const hot = leadsData.filter(lead => lead.category === 'hot').length;
+      const warm = leadsData.filter(lead => lead.category === 'warm').length;
+      const cold = leadsData.filter(lead => lead.category === 'cold').length;
+      
+      setStats({ totalLeads: total, hotLeads: hot, warmLeads: warm, coldLeads: cold });
+    } catch (error) {
+      console.error('Error fetching leads:', error);
+      toast.error('Failed to fetch leads');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+
+    try {
+      await axios.post('/api/leads', formData);
+      toast.success('Lead added successfully!');
+      
+      // Reset form and close modal
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        budget: '',
+        source: 'other',
+        company: '',
+        jobTitle: '',
+        location: '',
+        requirements: '',
+        notes: ''
+      });
+      setShowForm(false);
+      
+      // Refresh leads
+      fetchLeads();
+    } catch (error) {
+      console.error('Error creating lead:', error);
+      toast.error(error.response?.data?.message || 'Failed to create lead');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getCategoryBadge = (category, completionPercentage) => {
+    const badges = {
+      hot: 'bg-red-100 text-red-800 border-red-200',
+      warm: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      cold: 'bg-blue-100 text-blue-800 border-blue-200'
+    };
+
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badges[category]}`}>
+        {category.charAt(0).toUpperCase() + category.slice(1)} ({completionPercentage}%)
+      </span>
+    );
+  };
+
+  const getStatusBadge = (status) => {
+    const badges = {
+      new: 'bg-gray-100 text-gray-800',
+      interested: 'bg-green-100 text-green-800',
+      'not-interested': 'bg-red-100 text-red-800',
+      successful: 'bg-emerald-100 text-emerald-800',
+      'follow-up': 'bg-blue-100 text-blue-800'
+    };
+
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badges[status]}`}>
+        {status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+      </span>
+    );
+  };
+
+  if (loading) {
+    return <LoadingSpinner message="Loading dashboard..." />;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Welcome, {user.name}</h1>
+          <p className="text-gray-600">Manage your leads and track your progress</p>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200"
+        >
+          <Plus className="h-5 w-5 mr-2" />
+          Add New Lead
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-primary-100">
+              <Users className="h-6 w-6 text-primary-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Leads</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalLeads}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-red-100">
+              <TrendingUp className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Hot Leads</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.hotLeads}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-yellow-100">
+              <Calendar className="h-6 w-6 text-yellow-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Warm Leads</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.warmLeads}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-blue-100">
+              <Users className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Cold Leads</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.coldLeads}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Leads */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">Recent Leads</h3>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Lead Info
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contact
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Category
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Created
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {leads.map((lead) => (
+                <tr key={lead._id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{lead.name}</div>
+                      <div className="text-sm text-gray-500">{lead.company}</div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{lead.email}</div>
+                    <div className="text-sm text-gray-500">{lead.phone}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {getCategoryBadge(lead.category, lead.completionPercentage)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {getStatusBadge(lead.status)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(lead.createdAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+              {leads.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
+                    No leads found. Create your first lead to get started!
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add Lead Modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div 
+                className="absolute inset-0 bg-gray-500 opacity-75"
+                onClick={() => setShowForm(false)}
+              ></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <form onSubmit={handleSubmit}>
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">Add New Lead</h3>
+                    <p className="text-sm text-gray-500">Enter lead information below</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Name *</label>
+                      <input
+                        type="text"
+                        name="name"
+                        required
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.name}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Phone</label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {/* Budget */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Budget</label>
+                      <input
+                        type="number"
+                        name="budget"
+                        min="0"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.budget}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {/* Company */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Company</label>
+                      <input
+                        type="text"
+                        name="company"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.company}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {/* Source */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Source</label>
+                      <select
+                        name="source"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.source}
+                        onChange={handleInputChange}
+                      >
+                        <option value="other">Other</option>
+                        <option value="website">Website</option>
+                        <option value="social-media">Social Media</option>
+                        <option value="referral">Referral</option>
+                        <option value="advertisement">Advertisement</option>
+                        <option value="cold-call">Cold Call</option>
+                      </select>
+                    </div>
+
+                    {/* Requirements */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Requirements</label>
+                      <textarea
+                        name="requirements"
+                        rows="3"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.requirements}
+                        onChange={handleInputChange}
+                      ></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                  >
+                    {submitting ? 'Adding...' : 'Add Lead'}
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                    onClick={() => setShowForm(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Agent1Dashboard;
