@@ -58,6 +58,12 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
+        <div className="flex flex-col items-center mb-6">
+          {/* <img src="/logo.svg" alt="IMMERGIX Logo" className="h-20 w-auto mb-2 object-contain" style={{maxWidth: '180px'}} /> */}
+          <h1 className="text-xl font-bold text-primary-700 tracking-wide">IMMERGIX</h1>
+          <span className="text-xs text-gray-500">A Reddington Global Consultancy Pvt. Ltd. Company</span>
+        </div>
+
         <div>
           <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-primary-600">
             <User className="h-8 w-8 text-white" />
