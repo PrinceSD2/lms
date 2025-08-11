@@ -21,12 +21,15 @@ const Agent1Dashboard = () => {
     name: '',
     email: '',
     phone: '',
-    budget: '',
-    source: 'other',
+    debtAmount: '',
+    source: 'Personal Debt',
     company: '',
     jobTitle: '',
     location: '',
-    requirements: '',
+    address: '',
+    city: '',
+    state: '',
+    zipcode: '',
     notes: ''
   });
 
@@ -82,7 +85,50 @@ const Agent1Dashboard = () => {
     setSubmitting(true);
 
     try {
-      await axios.post('/api/leads', formData);
+      // Clean the form data to remove empty strings and convert debtAmount to number
+      const cleanFormData = {
+        name: formData.name.trim(),
+        source: formData.source && formData.source.trim() !== '' ? formData.source : 'Personal Debt'
+      };
+      
+      // Only add optional fields if they have meaningful values
+      if (formData.email && formData.email.trim() !== '') {
+        cleanFormData.email = formData.email.trim();
+      }
+      if (formData.phone && formData.phone.trim() !== '') {
+        cleanFormData.phone = formData.phone.trim();
+      }
+      if (formData.debtAmount && formData.debtAmount !== '' && !isNaN(formData.debtAmount)) {
+        cleanFormData.budget = parseFloat(formData.debtAmount);
+      }
+      if (formData.company && formData.company.trim() !== '') {
+        cleanFormData.company = formData.company.trim();
+      }
+      if (formData.jobTitle && formData.jobTitle.trim() !== '') {
+        cleanFormData.jobTitle = formData.jobTitle.trim();
+      }
+      if (formData.location && formData.location.trim() !== '') {
+        cleanFormData.location = formData.location.trim();
+      }
+      if (formData.address && formData.address.trim() !== '') {
+        cleanFormData.address = formData.address.trim();
+      }
+      if (formData.city && formData.city.trim() !== '') {
+        cleanFormData.city = formData.city.trim();
+      }
+      if (formData.state && formData.state.trim() !== '') {
+        cleanFormData.state = formData.state.trim();
+      }
+      if (formData.zipcode && formData.zipcode.trim() !== '') {
+        cleanFormData.zipcode = formData.zipcode.trim();
+      }
+      if (formData.notes && formData.notes.trim() !== '') {
+        cleanFormData.requirements = formData.notes.trim();
+      }
+      
+      console.log('Agent1 sending create request with cleaned data:', cleanFormData);
+      
+      const response = await axios.post('/api/leads', cleanFormData);
       toast.success('Lead added successfully!');
       
       // Reset form and close modal
@@ -90,12 +136,15 @@ const Agent1Dashboard = () => {
         name: '',
         email: '',
         phone: '',
-        budget: '',
-        source: 'other',
+        debtAmount: '',
+        source: 'Personal Debt',
         company: '',
         jobTitle: '',
         location: '',
-        requirements: '',
+        address: '',
+        city: '',
+        state: '',
+        zipcode: '',
         notes: ''
       });
       setShowForm(false);
@@ -104,6 +153,8 @@ const Agent1Dashboard = () => {
       fetchLeads();
     } catch (error) {
       console.error('Error creating lead:', error);
+      console.error('Error response:', error.response);
+      console.error('Error response data:', error.response?.data);
       toast.error(error.response?.data?.message || 'Failed to create lead');
     } finally {
       setSubmitting(false);
@@ -332,15 +383,15 @@ const Agent1Dashboard = () => {
                       />
                     </div>
 
-                    {/* Budget */}
+                    {/* Debt Amount */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Budget</label>
+                      <label className="block text-sm font-medium text-gray-700">Debt Amount</label>
                       <input
                         type="number"
-                        name="budget"
+                        name="debtAmount"
                         min="0"
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        value={formData.budget}
+                        value={formData.debtAmount}
                         onChange={handleInputChange}
                       />
                     </div>
@@ -359,30 +410,84 @@ const Agent1Dashboard = () => {
 
                     {/* Source */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Source</label>
+                      <label className="block text-sm font-medium text-gray-700">Debt Type</label>
                       <select
                         name="source"
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                         value={formData.source}
                         onChange={handleInputChange}
                       >
-                        <option value="other">Other</option>
-                        <option value="website">Website</option>
-                        <option value="social-media">Social Media</option>
-                        <option value="referral">Referral</option>
-                        <option value="advertisement">Advertisement</option>
-                        <option value="cold-call">Cold Call</option>
+                        <option value="Personal Debt">Personal Debt</option>
+                        <option value="Secured Debt">Secured Debt</option>
+                        <option value="Unsecured Debt">Unsecured Debt</option>
+                        <option value="Revolving Debt">Revolving Debt</option>
+                        <option value="Installment Debt">Installment Debt</option>
+                        <option value="Credit Card Debt">Credit Card Debt</option>
+                        <option value="Mortgage Debt">Mortgage Debt</option>
+                        <option value="Student Loans">Student Loans</option>
+                        <option value="Auto Loans">Auto Loans</option>
+                        <option value="Personal Loans">Personal Loans</option>
+                        <option value="Medical Debt">Medical Debt</option>
+                        <option value="Home Equity Loans (HELOCs)">Home Equity Loans (HELOCs)</option>
+                        <option value="Payday Loans">Payday Loans</option>
+                        <option value="Buy Now, Pay Later (BNPL) loans">Buy Now, Pay Later (BNPL) loans</option>
                       </select>
                     </div>
 
-                    {/* Requirements */}
+                    {/* Address */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Requirements</label>
+                      <label className="block text-sm font-medium text-gray-700">Address</label>
+                      <input
+                        type="text"
+                        name="address"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={formData.address}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {/* City, State, Zipcode */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">City</label>
+                        <input
+                          type="text"
+                          name="city"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.city}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">State</label>
+                        <input
+                          type="text"
+                          name="state"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.state}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Zipcode</label>
+                        <input
+                          type="text"
+                          name="zipcode"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.zipcode}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Notes</label>
                       <textarea
-                        name="requirements"
+                        name="notes"
                         rows="3"
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        value={formData.requirements}
+                        value={formData.notes}
                         onChange={handleInputChange}
                       ></textarea>
                     </div>

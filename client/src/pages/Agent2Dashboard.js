@@ -1,18 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  Eye, 
-  Calendar,
-  Phone,
-  Mail,
-  Building,
-  DollarSign,
   FileText,
   Clock,
   CheckCircle,
   XCircle,
   AlertCircle,
-  Filter,
   Search
 } from 'lucide-react';
 import axios from '../utils/axios';
@@ -20,11 +13,11 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const Agent2Dashboard = () => {
-  const { user } = useAuth();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [updating, setUpdating] = useState(false);
   
   const [filters, setFilters] = useState({
@@ -51,6 +44,7 @@ const Agent2Dashboard = () => {
     return () => {
       window.removeEventListener('refreshLeads', handleRefresh);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
   const fetchLeads = async () => {
@@ -78,7 +72,29 @@ const Agent2Dashboard = () => {
     setUpdating(true);
 
     try {
-      await axios.put(`/api/leads/${selectedLead._id}`, updateData);
+      // Clean the update data to remove empty strings
+      const cleanUpdateData = {
+        status: updateData.status
+      };
+      
+      // Only add optional fields if they have values
+      if (updateData.followUpDate && updateData.followUpDate !== '') {
+        cleanUpdateData.followUpDate = updateData.followUpDate;
+      }
+      if (updateData.followUpTime && updateData.followUpTime !== '') {
+        cleanUpdateData.followUpTime = updateData.followUpTime;
+      }
+      if (updateData.followUpNotes && updateData.followUpNotes !== '') {
+        cleanUpdateData.followUpNotes = updateData.followUpNotes;
+      }
+      if (updateData.conversionValue && updateData.conversionValue !== '') {
+        cleanUpdateData.conversionValue = parseFloat(updateData.conversionValue);
+      }
+      
+      console.log('Sending update request with cleaned data:', cleanUpdateData);
+      console.log('Selected lead ID:', selectedLead._id);
+      
+      await axios.put(`/api/leads/${selectedLead._id}`, cleanUpdateData);
       toast.success('Lead updated successfully!');
       
       setShowUpdateModal(false);
@@ -94,6 +110,7 @@ const Agent2Dashboard = () => {
       fetchLeads();
     } catch (error) {
       console.error('Error updating lead:', error);
+      console.error('Error response:', error.response);
       toast.error(error.response?.data?.message || 'Failed to update lead');
     } finally {
       setUpdating(false);
@@ -103,13 +120,18 @@ const Agent2Dashboard = () => {
   const openUpdateModal = (lead) => {
     setSelectedLead(lead);
     setUpdateData({
-      status: lead.status,
+      status: lead.status || 'new',
       followUpDate: lead.followUpDate ? new Date(lead.followUpDate).toISOString().split('T')[0] : '',
       followUpTime: lead.followUpTime || '',
       followUpNotes: lead.followUpNotes || '',
       conversionValue: lead.conversionValue || ''
     });
     setShowUpdateModal(true);
+  };
+
+  const openViewModal = (lead) => {
+    setSelectedLead(lead);
+    setShowViewModal(true);
   };
 
   const getCategoryBadge = (category, completionPercentage) => {
@@ -323,7 +345,10 @@ const Agent2Dashboard = () => {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Budget
+                  Debt Amount
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Debt Type
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -355,7 +380,16 @@ const Agent2Dashboard = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {lead.budget ? `$${lead.budget.toLocaleString()}` : 'N/A'}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {lead.source || 'N/A'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => openViewModal(lead)}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
+                      View Details
+                    </button>
                     <button
                       onClick={() => openUpdateModal(lead)}
                       className="text-primary-600 hover:text-primary-900 mr-3"
@@ -367,7 +401,7 @@ const Agent2Dashboard = () => {
               ))}
               {leads.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                     No leads found matching your criteria.
                   </td>
                 </tr>
@@ -376,6 +410,192 @@ const Agent2Dashboard = () => {
           </table>
         </div>
       </div>
+
+      {/* View Lead Details Modal */}
+      {showViewModal && selectedLead && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div 
+                className="absolute inset-0 bg-gray-500 opacity-75"
+                onClick={() => setShowViewModal(false)}
+              ></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+              <div className="bg-white px-6 pt-6 pb-4">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Lead Details: {selectedLead.name}</h3>
+                    <p className="text-sm text-gray-500">Complete lead information</p>
+                  </div>
+                  <button
+                    onClick={() => setShowViewModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <span className="sr-only">Close</span>
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Personal Information */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Personal Information</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Name:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.name || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Email:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.email || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Phone:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.phone || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Company:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.company || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Job Title:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.jobTitle || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Address Information */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Address Information</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Address:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.address || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">City:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.city || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">State:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.state || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Zipcode:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.zipcode || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Location:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.location || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Debt Information */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Debt Information</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Debt Type:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.source || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Debt Amount:</span>
+                        <span className="ml-2 text-sm text-gray-900">
+                          {selectedLead.budget ? `$${selectedLead.budget.toLocaleString()}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Category:</span>
+                        <span className="ml-2">{getCategoryBadge(selectedLead.category, selectedLead.completionPercentage)}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Status:</span>
+                        <span className="ml-2">{getStatusBadge(selectedLead.status)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Information */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Additional Information</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Created By:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.createdBy?.name || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Created At:</span>
+                        <span className="ml-2 text-sm text-gray-900">
+                          {selectedLead.createdAt ? new Date(selectedLead.createdAt).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </div>
+                      {selectedLead.followUpDate && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Follow-up Date:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {new Date(selectedLead.followUpDate).toLocaleDateString()}
+                            {selectedLead.followUpTime && ` at ${selectedLead.followUpTime}`}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.conversionValue && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Conversion Value:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            ${selectedLead.conversionValue.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notes Section */}
+                {(selectedLead.requirements || selectedLead.followUpNotes) && (
+                  <div className="mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Notes</h4>
+                    {selectedLead.requirements && (
+                      <div className="bg-gray-50 p-4 rounded-lg mb-3">
+                        <span className="text-sm font-medium text-gray-600 block mb-1">Initial Notes:</span>
+                        <p className="text-sm text-gray-900">{selectedLead.requirements}</p>
+                      </div>
+                    )}
+                    {selectedLead.followUpNotes && (
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <span className="text-sm font-medium text-gray-600 block mb-1">Follow-up Notes:</span>
+                        <p className="text-sm text-gray-900">{selectedLead.followUpNotes}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 px-6 py-3 sm:flex sm:flex-row-reverse">
+                <button
+                  onClick={() => {
+                    setShowViewModal(false);
+                    openUpdateModal(selectedLead);
+                  }}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Update Lead
+                </button>
+                <button
+                  onClick={() => setShowViewModal(false)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Update Lead Modal */}
       {showUpdateModal && selectedLead && (
@@ -407,11 +627,11 @@ const Agent2Dashboard = () => {
                         value={updateData.status}
                         onChange={(e) => setUpdateData({ ...updateData, status: e.target.value })}
                       >
-                        <option value="new">New</option>
-                        <option value="interested">Interested</option>
-                        <option value="not-interested">Not Interested</option>
-                        <option value="successful">Successful</option>
-                        <option value="follow-up">Follow Up</option>
+                          <option value="new">New</option>
+                          <option value="interested">Interested</option>
+                          <option value="not-interested">Not Interested</option>
+                          <option value="successful">Successful</option>
+                          <option value="follow-up">Follow Up</option>
                       </select>
                     </div>
 

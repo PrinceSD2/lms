@@ -17,7 +17,15 @@ const leadSchema = new mongoose.Schema({
   phone: {
     type: String,
     trim: true,
-    match: [/^[\+]?[1-9][\d]{0,15}$/, 'Please enter a valid phone number']
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // allow missing/undefined
+        const str = String(v).trim();
+        if (str === '') return true; // treat empty as not provided
+        return /^[\d+\-()\s]{5,20}$/.test(str);
+      },
+      message: 'Please enter a valid phone number'
+    }
   },
   
   // Lead Details
@@ -27,8 +35,13 @@ const leadSchema = new mongoose.Schema({
   },
   source: {
     type: String,
-    enum: ['website', 'social-media', 'referral', 'advertisement', 'cold-call', 'other'],
-    default: 'other'
+    enum: [
+      'Personal Debt', 'Secured Debt', 'Unsecured Debt', 'Revolving Debt', 
+      'Installment Debt', 'Credit Card Debt', 'Mortgage Debt', 'Student Loans',
+      'Auto Loans', 'Personal Loans', 'Medical Debt', 'Home Equity Loans (HELOCs)',
+      'Payday Loans', 'Buy Now, Pay Later (BNPL) loans'
+    ],
+    default: 'Personal Debt'
   },
   company: {
     type: String,
@@ -52,6 +65,28 @@ const leadSchema = new mongoose.Schema({
   notes: {
     type: String,
     maxlength: [2000, 'Notes cannot exceed 2000 characters']
+  },
+
+  // Address Information
+  address: {
+    type: String,
+    trim: true,
+    maxlength: [200, 'Address cannot exceed 200 characters']
+  },
+  city: {
+    type: String,
+    trim: true,
+    maxlength: [100, 'City cannot exceed 100 characters']
+  },
+  state: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'State cannot exceed 50 characters']
+  },
+  zipcode: {
+    type: String,
+    trim: true,
+    maxlength: [20, 'Zipcode cannot exceed 20 characters']
   },
 
   // Lead Categorization (Auto-calculated)
@@ -127,7 +162,8 @@ leadSchema.index({ followUpDate: 1 });
 leadSchema.pre('save', function(next) {
   const requiredFields = [
     'name', 'email', 'phone', 'budget', 'source', 
-    'company', 'jobTitle', 'location', 'requirements'
+    'company', 'jobTitle', 'location', 'requirements',
+    'address', 'city', 'state', 'zipcode'
   ];
   
   let filledFields = 0;

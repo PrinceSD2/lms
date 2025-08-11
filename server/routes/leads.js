@@ -13,46 +13,67 @@ const createLeadValidation = [
     .isLength({ min: 2, max: 100 })
     .withMessage('Name must be between 2 and 100 characters'),
   body('email')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isEmail()
-    .normalizeEmail()
     .withMessage('Please enter a valid email'),
   body('phone')
-    .optional()
-    .matches(/^[\+]?[1-9][\d]{0,15}$/)
-    .withMessage('Please enter a valid phone number'),
+    .custom((value) => {
+      if (!value || value.trim() === '') return true; // allow empty or missing
+      if (typeof value !== 'string') throw new Error('Phone must be a string');
+      if (value.length < 5 || value.length > 20) throw new Error('Phone must be 5-20 characters');
+      if (!/^[\d+\-()\s]+$/.test(value)) throw new Error('Phone can only contain numbers, spaces, +, -, (, )');
+      return true;
+    })
+    .withMessage('Phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
   body('budget')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isNumeric()
-    .isFloat({ min: 0 })
-    .withMessage('Budget must be a positive number'),
+    .withMessage('Budget must be a number'),
   body('source')
-    .optional()
-    .isIn(['website', 'social-media', 'referral', 'advertisement', 'cold-call', 'other'])
-    .withMessage('Invalid source'),
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn([
+      'Personal Debt', 'Secured Debt', 'Unsecured Debt', 'Revolving Debt', 
+      'Installment Debt', 'Credit Card Debt', 'Mortgage Debt', 'Student Loans',
+      'Auto Loans', 'Personal Loans', 'Medical Debt', 'Home Equity Loans (HELOCs)',
+      'Payday Loans', 'Buy Now, Pay Later (BNPL) loans'
+    ])
+    .withMessage('Invalid debt type'),
   body('company')
-    .optional()
-    .trim()
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ max: 100 })
     .withMessage('Company name cannot exceed 100 characters'),
   body('jobTitle')
-    .optional()
-    .trim()
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ max: 100 })
     .withMessage('Job title cannot exceed 100 characters'),
   body('location')
-    .optional()
-    .trim()
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ max: 200 })
     .withMessage('Location cannot exceed 200 characters'),
   body('requirements')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ max: 1000 })
     .withMessage('Requirements cannot exceed 1000 characters'),
   body('notes')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ max: 2000 })
-    .withMessage('Notes cannot exceed 2000 characters')
+    .withMessage('Notes cannot exceed 2000 characters'),
+  body('address')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 200 })
+    .withMessage('Address cannot exceed 200 characters'),
+  body('city')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+  body('state')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 50 })
+    .withMessage('State cannot exceed 50 characters'),
+  body('zipcode')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 20 })
+    .withMessage('Zipcode cannot exceed 20 characters')
 ];
 
 const updateLeadValidation = [
@@ -62,22 +83,45 @@ const updateLeadValidation = [
     .withMessage('Invalid status'),
   body('followUpDate')
     .optional()
-    .isISO8601()
-    .toDate()
-    .withMessage('Invalid follow-up date'),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty values
+      }
+      // Check if it's a valid date
+      const date = new Date(value);
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid follow-up date');
+      }
+      return true;
+    }),
   body('followUpTime')
     .optional()
-    .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Follow-up time must be in HH:MM format'),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty values
+      }
+      // Check if it matches HH:MM format
+      if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
+        throw new Error('Follow-up time must be in HH:MM format');
+      }
+      return true;
+    }),
   body('followUpNotes')
     .optional()
     .isLength({ max: 500 })
     .withMessage('Follow-up notes cannot exceed 500 characters'),
   body('conversionValue')
     .optional()
-    .isNumeric()
-    .isFloat({ min: 0 })
-    .withMessage('Conversion value must be a positive number')
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty values
+      }
+      const num = parseFloat(value);
+      if (isNaN(num) || num < 0) {
+        throw new Error('Conversion value must be a positive number');
+      }
+      return true;
+    })
 ];
 
 // @desc    Get all leads with pagination and filtering
@@ -213,23 +257,42 @@ router.get('/:id', protect, async (req, res) => {
 // @desc    Create new lead
 // @route   POST /api/leads
 // @access  Private (Agent1 only)
-router.post('/', protect, authorize('agent1', 'admin'), createLeadValidation, handleValidationErrors, async (req, res) => {
+router.post('/', protect, createLeadValidation, handleValidationErrors, async (req, res) => {
   try {
+    console.log('Create lead request body:', req.body);
+    console.log('Create lead request user:', req.user ? req.user.role : 'No user');
+    console.log('Create lead request user ID:', req.user ? req.user._id : 'No user ID');
+    
+    // Check if user has permission (agent1 or admin)
+    if (req.user && !['agent1', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `User role ${req.user.role} is not authorized to create leads`
+      });
+    }
+    
     const leadData = {
       ...req.body,
+      source: req.body.source && req.body.source.trim() !== '' ? req.body.source : 'Personal Debt',
       createdBy: req.user._id
     };
 
+    console.log('Creating lead with data:', leadData);
+
     const lead = await Lead.create(leadData);
+    
+    console.log('Lead created successfully:', lead._id);
     
     // Populate the created lead
     await lead.populate('createdBy', 'name email');
 
     // Emit real-time update
-    req.io.emit('leadCreated', {
-      lead: lead,
-      createdBy: req.user.name
-    });
+    if (req.io) {
+      req.io.emit('leadCreated', {
+        lead: lead,
+        createdBy: req.user.name
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -250,8 +313,20 @@ router.post('/', protect, authorize('agent1', 'admin'), createLeadValidation, ha
 // @desc    Update lead status
 // @route   PUT /api/leads/:id
 // @access  Private (Agent2, Admin)
-router.put('/:id', protect, authorize('agent2', 'admin'), updateLeadValidation, handleValidationErrors, async (req, res) => {
+router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async (req, res) => {
   try {
+    console.log('Update request body:', req.body);
+    console.log('Update request user:', req.user ? req.user.role : 'No user');
+    console.log('Update request user ID:', req.user ? req.user._id : 'No user ID');
+    
+    // Check if user has permission (agent2 or admin)
+    if (req.user && !['agent2', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `User role ${req.user.role} is not authorized to update leads`
+      });
+    }
+    
     const lead = await Lead.findById(req.params.id);
 
     if (!lead) {
@@ -261,10 +336,13 @@ router.put('/:id', protect, authorize('agent2', 'admin'), updateLeadValidation, 
       });
     }
 
+    console.log('Found lead:', lead._id);
+
     // Update fields
     const updateFields = ['status', 'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue'];
     updateFields.forEach(field => {
       if (req.body[field] !== undefined) {
+        console.log(`Updating ${field} to:`, req.body[field]);
         lead[field] = req.body[field];
       }
     });
@@ -272,14 +350,18 @@ router.put('/:id', protect, authorize('agent2', 'admin'), updateLeadValidation, 
     lead.updatedBy = req.user._id;
     await lead.save();
 
+    console.log('Lead saved successfully');
+
     // Populate the updated lead
     await lead.populate(['createdBy updatedBy', 'name email']);
 
     // Emit real-time update
-    req.io.emit('leadUpdated', {
-      lead: lead,
-      updatedBy: req.user.name
-    });
+    if (req.io) {
+      req.io.emit('leadUpdated', {
+        lead: lead,
+        updatedBy: req.user.name
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -429,6 +511,41 @@ router.get('/dashboard/stats', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching statistics',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get dashboard statistics for admin
+// @route   GET /api/leads/dashboard/stats
+// @access  Private (Admin)
+router.get('/dashboard/stats', protect, authorize('admin'), async (req, res) => {
+  try {
+    const stats = await Lead.getStatistics();
+    
+    // Get today's leads count
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayLeads = await Lead.countDocuments({
+      createdAt: { $gte: today }
+    });
+
+    const response = {
+      ...stats,
+      todayLeads,
+      lastUpdated: new Date().toISOString()
+    };
+
+    res.status(200).json({
+      success: true,
+      data: response
+    });
+
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching dashboard statistics',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

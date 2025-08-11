@@ -19,11 +19,10 @@ const app = express();
 app.set('trust proxy', 1);
 
 const server = http.createServer(app);
+const dev = process.env.NODE_ENV !== 'production';
 const io = socketIo(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? ['https://your-frontend-domain.com'] 
-      : ['http://localhost:3000'],
+    origin: dev ? true : ['https://your-frontend-domain.com'],
     credentials: true
   }
 });
@@ -31,9 +30,7 @@ const io = socketIo(server, {
 // Security Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com'] 
-    : ['http://localhost:3000'],
+  origin: dev ? true : ['https://your-frontend-domain.com'],
   credentials: true
 }));
 

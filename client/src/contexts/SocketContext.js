@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { apiBaseURL } from '../utils/axios';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
@@ -12,7 +13,7 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (isAuthenticated && user) {
       // Initialize socket connection
-      socket.current = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
+  socket.current = io(apiBaseURL, {
         transports: ['websocket'],
         upgrade: false,
         auth: {
