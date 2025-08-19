@@ -12,6 +12,7 @@ require('dotenv').config();
 // Import routes
 const authRoutes = require('./routes/auth');
 const leadRoutes = require('./routes/leads');
+const organizationRoutes = require('./routes/organizations');
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use((req, res, next) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
+app.use('/api/organizations', organizationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

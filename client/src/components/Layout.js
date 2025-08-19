@@ -10,7 +10,8 @@ import {
   Menu, 
   X,
   Bell,
-  Settings
+  Settings,
+  Shield
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -31,7 +32,13 @@ const Layout = () => {
       { name: 'Profile', href: '/profile', icon: User }
     ];
 
-    if (user.role === 'admin') {
+    if (user.role === 'superadmin') {
+      return [
+        { name: 'SuperAdmin', href: '/superadmin', icon: Shield },
+        { name: 'All Leads', href: '/leads', icon: Users },
+        ...baseItems
+      ];
+    } else if (user.role === 'admin') {
       return [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 },
         { name: 'All Leads', href: '/leads', icon: Users },
@@ -96,7 +103,8 @@ const Layout = () => {
               <p className="text-sm font-medium text-gray-900">{user.name}</p>
               <p className="text-xs text-gray-500 capitalize">
                 {user.role === 'agent1' ? 'Lead Generator' : 
-                 user.role === 'agent2' ? 'Lead Follower' : 'Administrator'}
+                 user.role === 'agent2' ? 'Lead Follower' : 
+                 user.role === 'admin' ? 'Administrator' : 'Super Administrator'}
               </p>
             </div>
           </div>

@@ -149,8 +149,8 @@ const Login = () => {
               Demo Account:
             </div>
             <div className="mt-2 space-y-1 text-xs text-gray-500">
-              <div>Admin: princekushwaha@reddingtonglobal.com / Admin@123</div>
-              <div className="text-red-500">Note: Only Admin can create new accounts</div>
+              <div>SuperAdmin: superadmin@lms.com / SuperAdmin123!</div>
+              <div className="text-red-500">Note: SuperAdmin can create organizations and users</div>
             </div>
           </div>
         </form>

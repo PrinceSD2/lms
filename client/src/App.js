@@ -10,6 +10,7 @@ import Register from './pages/Register';
 import Agent1Dashboard from './pages/Agent1Dashboard';
 import Agent2Dashboard from './pages/Agent2Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import Profile from './pages/Profile';
 
 function App() {
@@ -65,14 +66,20 @@ function App() {
                 } />
                 
                 <Route path="leads" element={
-                  <ProtectedRoute roles={['agent2', 'admin']}>
+                  <ProtectedRoute roles={['agent2', 'admin', 'superadmin']}>
                     <Agent2Dashboard />
                   </ProtectedRoute>
                 } />
                 
                 <Route path="admin" element={
-                  <ProtectedRoute roles={['admin']}>
+                  <ProtectedRoute roles={['admin', 'superadmin']}>
                     <AdminDashboard />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="superadmin" element={
+                  <ProtectedRoute roles={['superadmin']}>
+                    <SuperAdminDashboard />
                   </ProtectedRoute>
                 } />
                 

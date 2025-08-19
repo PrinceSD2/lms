@@ -432,8 +432,8 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       }
     });
 
-    // Mark as admin processed if updated by admin
-    if (req.user.role === 'admin') {
+    // Mark as admin processed if updated by admin or superadmin
+    if (['admin', 'superadmin'].includes(req.user.role)) {
       lead.adminProcessed = true;
       lead.adminProcessedAt = new Date();
     }
@@ -544,7 +544,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
 
     // Get basic statistics
     let stats;
-    if (role === 'admin') {
+    if (['admin', 'superadmin'].includes(role)) {
       stats = await Lead.getStatistics();
     } else {
       // Get filtered stats for agents

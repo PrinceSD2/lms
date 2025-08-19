@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['agent1', 'agent2', 'admin'],
+    enum: ['agent1', 'agent2', 'admin', 'superadmin'],
     default: 'agent1'
   },
   isActive: {
@@ -33,6 +33,14 @@ const userSchema = new mongoose.Schema({
   },
   lastLogin: {
     type: Date
+  },
+  organization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    required: function() {
+      // Organization is required for admin and agents, but not for superadmin
+      return this.role !== 'superadmin';
+    }
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -49,6 +57,8 @@ const userSchema = new mongoose.Schema({
 // Index for faster queries
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ organization: 1 });
+userSchema.index({ organization: 1, role: 1 });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
