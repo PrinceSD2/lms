@@ -29,10 +29,6 @@ const authReducer = (state, action) => {
     case 'LOGIN_SUCCESS':
     case 'REGISTER_SUCCESS':
       localStorage.setItem('token', action.payload.token);
-      // Set axios default header for future requests
-      if (action.payload.token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${action.payload.token}`;
-      }
       return {
         ...state,
         user: action.payload.user,
@@ -53,8 +49,6 @@ const authReducer = (state, action) => {
       };
     case 'LOGOUT':
       localStorage.removeItem('token');
-      // Clear axios default header
-      delete axios.defaults.headers.common['Authorization'];
       return {
         ...state,
         user: null,
@@ -91,19 +85,9 @@ const authReducer = (state, action) => {
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Initialize axios headers if token exists in localStorage
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    }
-  }, []);
-
   // Load user on app start or when token changes
   useEffect(() => {
     if (state.token) {
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${state.token}`;
       loadUser();
     } else {
       dispatch({ type: 'SET_LOADING', payload: false });

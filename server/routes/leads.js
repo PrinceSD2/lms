@@ -25,6 +25,40 @@ const createLeadValidation = [
       return true;
     })
     .withMessage('Phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
+  body('alternatePhone')
+    .optional({ nullable: true, checkFalsy: true })
+    .custom((value) => {
+      if (!value || value.trim() === '') return true; // allow empty or missing
+      if (typeof value !== 'string') throw new Error('Alternate phone must be a string');
+      if (value.length < 5 || value.length > 20) throw new Error('Alternate phone must be 5-20 characters');
+      if (!/^[\d+\-()\s]+$/.test(value)) throw new Error('Alternate phone can only contain numbers, spaces, +, -, (, )');
+      return true;
+    })
+    .withMessage('Alternate phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
+  body('debtCategory')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['secured', 'unsecured'])
+    .withMessage('Debt category must be secured or unsecured'),
+  body('debtTypes')
+    .optional({ nullable: true, checkFalsy: true })
+    .isArray()
+    .withMessage('Debt types must be an array'),
+  body('totalDebtAmount')
+    .optional({ nullable: true, checkFalsy: true })
+    .isNumeric()
+    .withMessage('Total debt amount must be a number'),
+  body('numberOfCreditors')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 0 })
+    .withMessage('Number of creditors must be a non-negative integer'),
+  body('monthlyDebtPayment')
+    .optional({ nullable: true, checkFalsy: true })
+    .isNumeric()
+    .withMessage('Monthly debt payment must be a number'),
+  body('creditScoreRange')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['300-549', '550-649', '650-699', '700-749', '750-850'])
+    .withMessage('Credit score range must be 300-549, 550-649, 650-699, 700-749, or 750-850'),
   body('budget')
     .optional({ nullable: true, checkFalsy: true })
     .isNumeric()
@@ -81,6 +115,40 @@ const updateLeadValidation = [
     .optional()
     .isIn(['new', 'interested', 'not-interested', 'successful', 'follow-up'])
     .withMessage('Invalid status'),
+  body('leadStatus')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['Warm Transfer – Pre-Qualified', 'Cold Transfer – Unqualified', 'From Internal Dept.', 'Test / Training Call'])
+    .withMessage('Invalid lead status'),
+  body('contactStatus')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['Connected & Engaged', 'Connected – Requested Callback', 'No Answer', 'Wrong Number', 'Call Dropped'])
+    .withMessage('Invalid contact status'),
+  body('qualificationOutcome')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn([
+      'Qualified – Meets Criteria', 'Pre-Qualified – Docs Needed', 'Disqualified – Debt Too Low',
+      'Disqualified – Secured Debt Only', 'Disqualified – Non-Service State', 'Disqualified – No Hardship',
+      'Disqualified – Active with Competitor'
+    ])
+    .withMessage('Invalid qualification outcome'),
+  body('callDisposition')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn([
+      'Appointment Scheduled', 'Immediate Enrollment', 'Info Provided – Awaiting Decision',
+      'Nurture – Not Ready', 'Declined Services', 'DNC'
+    ])
+    .withMessage('Invalid call disposition'),
+  body('engagementOutcome')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn([
+      'Proceeding with Program', 'Callback Needed', 'Left Voicemail',
+      'Info Only – Follow-up Needed', 'Not Interested', 'DNC'
+    ])
+    .withMessage('Invalid engagement outcome'),
+  body('disqualification')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['Debt Too Low', 'Secured Debt Only', 'No Debt', 'Wrong Number / Bad Contact'])
+    .withMessage('Invalid disqualification'),
   body('followUpDate')
     .optional()
     .custom((value) => {
@@ -179,6 +247,9 @@ router.get('/', protect, [
     // Role-based filtering (Agent1 can only see their own leads)
     if (req.user.role === 'agent1') {
       filter.createdBy = req.user._id;
+      filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
+    } else if (req.user.role === 'agent2') {
+      filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
     }
 
     // Get leads with pagination
@@ -282,6 +353,7 @@ router.post('/', protect, createLeadValidation, handleValidationErrors, async (r
     const lead = await Lead.create(leadData);
     
     console.log('Lead created successfully:', lead._id);
+    console.log('Saved lead data:', JSON.stringify(lead, null, 2));
     
     // Populate the created lead
     await lead.populate('createdBy', 'name email');
@@ -289,6 +361,15 @@ router.post('/', protect, createLeadValidation, handleValidationErrors, async (r
     // Emit real-time update
     if (req.io) {
       req.io.emit('leadCreated', {
+        lead: lead,
+        createdBy: req.user.name
+      });
+      // Also emit to specific rooms
+      req.io.to('admin').emit('leadCreated', {
+        lead: lead,
+        createdBy: req.user.name
+      });
+      req.io.to('agent2').emit('leadCreated', {
         lead: lead,
         createdBy: req.user.name
       });
@@ -339,13 +420,23 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     console.log('Found lead:', lead._id);
 
     // Update fields
-    const updateFields = ['status', 'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue'];
+    const updateFields = [
+      'status', 'leadStatus', 'contactStatus', 'qualificationOutcome', 
+      'callDisposition', 'engagementOutcome', 'disqualification',
+      'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue'
+    ];
     updateFields.forEach(field => {
       if (req.body[field] !== undefined) {
         console.log(`Updating ${field} to:`, req.body[field]);
         lead[field] = req.body[field];
       }
     });
+
+    // Mark as admin processed if updated by admin
+    if (req.user.role === 'admin') {
+      lead.adminProcessed = true;
+      lead.adminProcessedAt = new Date();
+    }
 
     lead.updatedBy = req.user._id;
     await lead.save();
@@ -358,6 +449,15 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     // Emit real-time update
     if (req.io) {
       req.io.emit('leadUpdated', {
+        lead: lead,
+        updatedBy: req.user.name
+      });
+      // Also emit to specific rooms
+      req.io.to('admin').emit('leadUpdated', {
+        lead: lead,
+        updatedBy: req.user.name
+      });
+      req.io.to('agent2').emit('leadUpdated', {
         lead: lead,
         updatedBy: req.user.name
       });
@@ -397,6 +497,15 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
 
     // Emit real-time update
     req.io.emit('leadDeleted', {
+      leadId: req.params.id,
+      deletedBy: req.user.name
+    });
+    // Also emit to specific rooms
+    req.io.to('admin').emit('leadDeleted', {
+      leadId: req.params.id,
+      deletedBy: req.user.name
+    });
+    req.io.to('agent2').emit('leadDeleted', {
       leadId: req.params.id,
       deletedBy: req.user.name
     });

@@ -17,45 +17,67 @@ const Agent1Dashboard = () => {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Utility functions to mask sensitive data
+  const maskEmail = (email) => {
+    if (!email) return '—';
+    const [username, domain] = email.split('@');
+    if (username.length <= 2) return `${username}***@${domain}`;
+    return `${username.substring(0, 2)}***@${domain}`;
+  };
+
+  const maskPhone = (phone) => {
+    if (!phone) return '—';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length <= 4) return '***-****';
+    return `***-***-${cleaned.slice(-4)}`;
+  };
+
+  const maskAmount = (amount) => {
+    if (!amount) return '—';
+    const amountStr = amount.toString();
+    if (amountStr.length <= 3) return '$***';
+    return `$${amountStr.substring(0, 1)}***`;
+  };
+
   // Add a map of debt types by category
   const DEBT_TYPES_BY_CATEGORY = {
     secured: [
-      'Mortgage Debt',
+      'Mortgage Loans',
       'Auto Loans',
-      'Home Equity Loans (HELOCs)',
-      'Secured Debt'
+      'Secured Personal Loans',
+      'Home Equity Loans',
+      'Title Loans'
     ],
     unsecured: [
-      'Credit Card Debt',
-      'Personal Loans',
-      'Medical Debt',
+      'Credit Cards',
+      'Instalment Loans (Unsecured)',
+      'Medical Bills',
+      'Utility Bills',
       'Payday Loans',
-      'Unsecured Debt',
-      'Buy Now, Pay Later (BNPL) loans'
-    ],
-    'federal-loan': [
-      'Student Loans'
+      'Student Loans (private loan)',
+      'Store/Charge Cards',
+      'Overdraft Balances',
+      'Business Loans (unsecured)',
+      'Collection Accounts'
     ]
   };
 
   const CATEGORY_LABELS = {
     secured: 'Secured',
-    unsecured: 'Unsecured',
-    'federal-loan': 'Federal Loan'
+    unsecured: 'Unsecured'
   };
 
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    alternatePhone: '', // added
-    debtAmount: '',
-    // single category + multiple types
+    alternatePhone: '',
     debtCategory: 'unsecured',
     debtTypes: [],
-    company: '',
-    jobTitle: '',
-    location: '',
+    totalDebtAmount: '',
+    numberOfCreditors: '',
+    monthlyDebtPayment: '',
+    creditScoreRange: '',
     address: '',
     city: '',
     state: '',
@@ -138,6 +160,12 @@ const Agent1Dashboard = () => {
     setSubmitting(true);
 
     try {
+      console.log('Form submission started');
+      console.log('Form data:', formData);
+      console.log('Auth token:', localStorage.getItem('token') ? 'Present' : 'Missing');
+      console.log('User role:', user?.role);
+      
+      // Build complete form data
       const cleanFormData = {
         name: formData.name.trim(),
       };
@@ -145,19 +173,40 @@ const Agent1Dashboard = () => {
       // Include category and selected types
       if (formData.debtCategory) {
         cleanFormData.debtCategory = formData.debtCategory;
-        cleanFormData.debtCategories = [formData.debtCategory]; // optional array for compatibility
       }
       if (Array.isArray(formData.debtTypes) && formData.debtTypes.length > 0) {
         cleanFormData.debtTypes = formData.debtTypes;
-        cleanFormData.source = formData.debtTypes[0]; // fallback for older backend
+        
+        // Map debt types to valid source values
+        const debtTypeToSource = {
+          'Credit Cards': 'Credit Card Debt',
+          'Mortgage Loans': 'Mortgage Debt',
+          'Auto Loans': 'Auto Loans',
+          'Student Loans (private loan)': 'Student Loans',
+          'Medical Bills': 'Medical Debt',
+          'Personal Loans': 'Personal Loans',
+          'Payday Loans': 'Payday Loans',
+          'Secured Personal Loans': 'Secured Debt',
+          'Home Equity Loans': 'Home Equity Loans (HELOCs)',
+          'Title Loans': 'Secured Debt',
+          'Instalment Loans (Unsecured)': 'Installment Debt',
+          'Utility Bills': 'Personal Debt',
+          'Store/Charge Cards': 'Credit Card Debt',
+          'Overdraft Balances': 'Personal Debt',
+          'Business Loans (unsecured)': 'Personal Debt',
+          'Collection Accounts': 'Personal Debt'
+        };
+        
+        const firstDebtType = formData.debtTypes[0];
+        cleanFormData.source = debtTypeToSource[firstDebtType] || 'Personal Debt';
       } else {
         cleanFormData.source = {
           secured: 'Secured Debt',
-          unsecured: 'Unsecured Debt',
-          'federal-loan': 'Student Loans'
+          unsecured: 'Unsecured Debt'
         }[formData.debtCategory] || 'Personal Debt';
       }
 
+      // Add contact information
       if (formData.email && formData.email.trim() !== '') {
         cleanFormData.email = formData.email.trim();
       }
@@ -167,18 +216,25 @@ const Agent1Dashboard = () => {
       if (formData.alternatePhone && formData.alternatePhone.trim() !== '') {
         cleanFormData.alternatePhone = formData.alternatePhone.trim();
       }
-      if (formData.debtAmount && formData.debtAmount !== '' && !isNaN(formData.debtAmount)) {
-        cleanFormData.budget = parseFloat(formData.debtAmount);
+
+      // Add debt information
+      if (formData.totalDebtAmount && formData.totalDebtAmount !== '' && !isNaN(formData.totalDebtAmount)) {
+        cleanFormData.totalDebtAmount = parseFloat(formData.totalDebtAmount);
       }
-      if (formData.company && formData.company.trim() !== '') {
-        cleanFormData.company = formData.company.trim();
+      if (formData.numberOfCreditors && formData.numberOfCreditors !== '' && !isNaN(formData.numberOfCreditors)) {
+        cleanFormData.numberOfCreditors = parseInt(formData.numberOfCreditors, 10);
       }
-      if (formData.jobTitle && formData.jobTitle.trim() !== '') {
-        cleanFormData.jobTitle = formData.jobTitle.trim();
+      if (formData.monthlyDebtPayment && formData.monthlyDebtPayment !== '' && !isNaN(formData.monthlyDebtPayment)) {
+        cleanFormData.monthlyDebtPayment = parseFloat(formData.monthlyDebtPayment);
       }
-      if (formData.location && formData.location.trim() !== '') {
-        cleanFormData.location = formData.location.trim();
+      if (formData.creditScoreRange && formData.creditScoreRange.trim() !== '') {
+        cleanFormData.creditScoreRange = formData.creditScoreRange.trim();
       }
+      if (formData.notes && formData.notes.trim() !== '') {
+        cleanFormData.notes = formData.notes.trim();
+      }
+
+      // Add address information
       if (formData.address && formData.address.trim() !== '') {
         cleanFormData.address = formData.address.trim();
       }
@@ -191,13 +247,14 @@ const Agent1Dashboard = () => {
       if (formData.zipcode && formData.zipcode.trim() !== '') {
         cleanFormData.zipcode = formData.zipcode.trim();
       }
-      if (formData.notes && formData.notes.trim() !== '') {
-        cleanFormData.requirements = formData.notes.trim();
-      }
 
       console.log('Agent1 sending create request with cleaned data:', cleanFormData);
+      console.log('Axios defaults:', { baseURL: axios.defaults.baseURL, timeout: axios.defaults.timeout });
+      console.log('Making request to:', '/api/leads');
 
       const response = await axios.post('/api/leads', cleanFormData);
+      console.log('Lead creation response:', response);
+      console.log('Lead creation response data:', response.data);
       toast.success('Lead added successfully!');
 
       setFormData({
@@ -205,12 +262,12 @@ const Agent1Dashboard = () => {
         email: '',
         phone: '',
         alternatePhone: '',
-        debtAmount: '',
         debtCategory: 'unsecured',
         debtTypes: [],
-        company: '',
-        jobTitle: '',
-        location: '',
+        totalDebtAmount: '',
+        numberOfCreditors: '',
+        monthlyDebtPayment: '',
+        creditScoreRange: '',
         address: '',
         city: '',
         state: '',
@@ -346,11 +403,16 @@ const Agent1Dashboard = () => {
                   Lead Info
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contact
+                  Email
                 </th>
-                {/* New: Debt Types column */}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Phone
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Debt Types
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Financial Info
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Category
@@ -373,19 +435,39 @@ const Agent1Dashboard = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{lead.email}</div>
-                    <div className="text-sm text-gray-500">{lead.phone}</div>
+                    <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
                   </td>
-                  {/* New: show selected debt types or fallback */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{maskPhone(lead.phone)}</div>
+                    {lead.alternatePhone && (
+                      <div className="text-xs text-gray-500">Alt: {maskPhone(lead.alternatePhone)}</div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
                       {Array.isArray(lead.debtTypes) && lead.debtTypes.length > 0
                         ? lead.debtTypes.join(', ')
                         : (lead.source || (lead.debtCategory ? ({
                               secured: 'Secured Debt',
-                              unsecured: 'Unsecured Debt',
-                              'federal-loan': 'Student Loans'
+                              unsecured: 'Unsecured Debt'
                             }[lead.debtCategory]) : '—'))}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {lead.totalDebtAmount && (
+                        <div>Debt: {maskAmount(lead.totalDebtAmount)}</div>
+                      )}
+                      {lead.numberOfCreditors && (
+                        <div className="text-xs text-gray-500">Creditors: {lead.numberOfCreditors}</div>
+                      )}
+                      {lead.monthlyDebtPayment && (
+                        <div className="text-xs text-gray-500">Monthly: {maskAmount(lead.monthlyDebtPayment)}</div>
+                      )}
+                      {lead.creditScoreRange && (
+                        <div className="text-xs text-gray-500">Credit: ***-***</div>
+                      )}
+                      {!lead.totalDebtAmount && !lead.numberOfCreditors && !lead.monthlyDebtPayment && !lead.creditScoreRange && '—'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -401,7 +483,7 @@ const Agent1Dashboard = () => {
               ))}
               {leads.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
                     No leads found. Create your first lead to get started!
                   </td>
                 </tr>
@@ -502,17 +584,64 @@ const Agent1Dashboard = () => {
                       </div>
                     </div>
 
-                    {/* Debt Amount */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Debt Load</label>
-                      <input
-                        type="number"
-                        name="debtAmount"
-                        min="0"
-                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        value={formData.debtAmount}
-                        onChange={handleInputChange}
-                      />
+                    {/* Financial Information */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Total Debt Amount</label>
+                        <input
+                          type="number"
+                          name="totalDebtAmount"
+                          min="0"
+                          step="0.01"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.totalDebtAmount}
+                          onChange={handleInputChange}
+                          placeholder="$"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Number of Creditors</label>
+                        <input
+                          type="number"
+                          name="numberOfCreditors"
+                          min="0"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.numberOfCreditors}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Monthly Debt Payment</label>
+                        <input
+                          type="number"
+                          name="monthlyDebtPayment"
+                          min="0"
+                          step="0.01"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.monthlyDebtPayment}
+                          onChange={handleInputChange}
+                          placeholder="$"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Credit Score Range</label>
+                        <select
+                          name="creditScoreRange"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={formData.creditScoreRange}
+                          onChange={handleInputChange}
+                        >
+                          <option value="">Select range</option>
+                          <option value="300-549">Poor (300-549)</option>
+                          <option value="550-649">Fair (550-649)</option>
+                          <option value="650-699">Good (650-699)</option>
+                          <option value="700-749">Very Good (700-749)</option>
+                          <option value="750-850">Excellent (750-850)</option>
+                        </select>
+                      </div>
                     </div>
 
                     {/* Company */}
@@ -552,16 +681,6 @@ const Agent1Dashboard = () => {
                             onChange={handleDebtCategoryChange}
                           />
                           <span>Unsecured</span>
-                        </label>
-                        <label className="inline-flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="debtCategory"
-                            value="federal-loan"
-                            checked={formData.debtCategory === 'federal-loan'}
-                            onChange={handleDebtCategoryChange}
-                          />
-                          <span>Federal Loan</span>
                         </label>
                       </div>
 

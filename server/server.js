@@ -122,9 +122,17 @@ const connectDB = async () => {
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`Server listening on all interfaces (0.0.0.0:${PORT})`);
+    console.log(`Server address:`, server.address());
+  }).on('error', (err) => {
+    console.error('Server failed to start:', err);
+    process.exit(1);
   });
+}).catch((err) => {
+  console.error('Database connection failed:', err);
+  process.exit(1);
 });
 
 // Graceful shutdown

@@ -16,8 +16,10 @@ import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AgentManagement from '../components/AgentManagement';
+import { useSocket } from '../contexts/SocketContext';
 
 const AdminDashboard = () => {
+  const { socket } = useSocket();
   const [stats, setStats] = useState(null);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,21 @@ const AdminDashboard = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [updating, setUpdating] = useState(false);
+
+  // Utility functions to mask sensitive data
+  const maskEmail = (email) => {
+    if (!email) return '—';
+    const [username, domain] = email.split('@');
+    if (username.length <= 2) return `${username}***@${domain}`;
+    return `${username.substring(0, 2)}***@${domain}`;
+  };
+
+  const maskPhone = (phone) => {
+    if (!phone) return '—';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length <= 4) return '***-****';
+    return `***-***-${cleaned.slice(-4)}`;
+  };
   
   const [filters, setFilters] = useState({
     status: '',
@@ -74,6 +91,65 @@ const AdminDashboard = () => {
       fetchStats(true);
       if (showLeadsSection) fetchLeads();
     });
+
+    // Socket.IO event listeners for real-time updates
+    if (socket) {
+      const handleLeadUpdated = (data) => {
+        console.log('Lead updated via socket:', data);
+        toast.success(`Lead updated by ${data.updatedBy}`, {
+          duration: 3000,
+          icon: '🔄'
+        });
+        fetchStats(true);
+        if (showLeadsSection) {
+          fetchLeads();
+        }
+        setLastUpdated(new Date());
+      };
+
+      const handleLeadCreated = (data) => {
+        console.log('New lead created via socket:', data);
+        toast.success(`New lead created by ${data.createdBy}`, {
+          duration: 3000,
+          icon: '✅'
+        });
+        fetchStats(true);
+        if (showLeadsSection) {
+          fetchLeads();
+        }
+        setLastUpdated(new Date());
+      };
+
+      const handleLeadDeleted = (data) => {
+        console.log('Lead deleted via socket:', data);
+        toast.success(`Lead deleted by ${data.deletedBy}`, {
+          duration: 3000,
+          icon: '🗑️'
+        });
+        fetchStats(true);
+        if (showLeadsSection) {
+          fetchLeads();
+        }
+        setLastUpdated(new Date());
+      };
+
+      socket.on('leadUpdated', handleLeadUpdated);
+      socket.on('leadCreated', handleLeadCreated);
+      socket.on('leadDeleted', handleLeadDeleted);
+
+      // Cleanup socket listeners
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('refreshStats', handleStatsRefresh);
+        window.removeEventListener('refreshLeads', () => {
+          fetchStats(true);
+          if (showLeadsSection) fetchLeads();
+        });
+        socket.off('leadUpdated', handleLeadUpdated);
+        socket.off('leadCreated', handleLeadCreated);
+        socket.off('leadDeleted', handleLeadDeleted);
+      };
+    }
     
     return () => {
       clearInterval(interval);
@@ -84,7 +160,7 @@ const AdminDashboard = () => {
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLeadsSection, filters]);
+  }, [showLeadsSection, filters, socket]);
 
   const fetchStats = async (isRefresh = false) => {
     try {
@@ -188,6 +264,34 @@ const AdminDashboard = () => {
   const openViewModal = (lead) => {
     setSelectedLead(lead);
     setShowViewModal(true);
+  };
+
+  const handleDeleteLead = async (leadId, leadName) => {
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the lead "${leadName}"?\n\nThis action cannot be undone.`
+    );
+    
+    if (!confirmed) return;
+
+    try {
+      setRefreshing(true);
+      
+      // Make delete request
+      await axios.delete(`/api/leads/${leadId}`);
+      
+      toast.success(`Lead "${leadName}" deleted successfully`);
+      
+      // Refresh leads list and stats
+      await fetchLeads();
+      await fetchStats(true);
+      
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete lead');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const getCategoryBadge = (category, completionPercentage) => {
@@ -567,13 +671,13 @@ const AdminDashboard = () => {
                       Category
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      Agent1 Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Agent2 Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Debt Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Debt Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -593,34 +697,91 @@ const AdminDashboard = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{lead.email}</div>
-                        <div className="text-sm text-gray-500">{lead.phone}</div>
+                        <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
+                        <div className="text-sm text-gray-500">{maskPhone(lead.phone)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getCategoryBadge(lead.category, lead.completionPercentage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(lead.status)}
+                        <div className="text-xs space-y-1">
+                          <div>
+                            <span className="text-gray-600">General:</span>
+                            <span className="ml-1">{getStatusBadge(lead.status)}</span>
+                          </div>
+                          {lead.debtCategory && (
+                            <div>
+                              <span className="text-gray-600">Category:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 capitalize">
+                                {lead.debtCategory}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-xs space-y-1">
+                          {lead.leadStatus && (
+                            <div>
+                              <span className="text-gray-600">Lead:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                {lead.leadStatus}
+                              </span>
+                            </div>
+                          )}
+                          {lead.contactStatus && (
+                            <div>
+                              <span className="text-gray-600">Contact:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">
+                                {lead.contactStatus}
+                              </span>
+                            </div>
+                          )}
+                          {lead.qualificationOutcome && (
+                            <div>
+                              <span className="text-gray-600">Qualification:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800">
+                                {lead.qualificationOutcome}
+                              </span>
+                            </div>
+                          )}
+                          {lead.callDisposition && (
+                            <div>
+                              <span className="text-gray-600">Call:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800">
+                                {lead.callDisposition}
+                              </span>
+                            </div>
+                          )}
+                          {(!lead.leadStatus && !lead.contactStatus && !lead.qualificationOutcome && !lead.callDisposition) && (
+                            <span className="text-gray-400 text-xs">No Agent2 updates</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {lead.budget ? `$${lead.budget.toLocaleString()}` : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {lead.source || 'N/A'}
+                        {lead.totalDebtAmount ? `$${lead.totalDebtAmount.toLocaleString()}` : 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => openViewModal(lead)}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => openUpdateModal(lead)}
-                          className="text-primary-600 hover:text-primary-900 mr-3"
-                        >
-                          Update
-                        </button>
+                        <div className="flex flex-col space-y-1">
+                          <button
+                            onClick={() => openViewModal(lead)}
+                            className="text-blue-600 hover:text-blue-900 text-xs"
+                          >
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => openUpdateModal(lead)}
+                            className="text-primary-600 hover:text-primary-900 text-xs"
+                          >
+                            Update
+                          </button>
+                          <button
+                            onClick={() => handleDeleteLead(lead._id, lead.name)}
+                            className="text-red-600 hover:text-red-900 text-xs"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -684,10 +845,12 @@ const AdminDashboard = () => {
                         <span className="text-sm font-medium text-gray-600">Phone:</span>
                         <span className="ml-2 text-sm text-gray-900">{selectedLead.phone || 'N/A'}</span>
                       </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Company:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.company || 'N/A'}</span>
-                      </div>
+                      {selectedLead.alternatePhone && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Alternate Phone:</span>
+                          <span className="ml-2 text-sm text-gray-900">{selectedLead.alternatePhone}</span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-sm font-medium text-gray-600">Job Title:</span>
                         <span className="ml-2 text-sm text-gray-900">{selectedLead.jobTitle || 'N/A'}</span>
@@ -727,14 +890,38 @@ const AdminDashboard = () => {
                     <h4 className="text-md font-semibold text-gray-900 mb-3">Debt Information</h4>
                     <div className="space-y-2">
                       <div>
-                        <span className="text-sm font-medium text-gray-600">Debt Type:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.source || 'N/A'}</span>
+                        <span className="text-sm font-medium text-gray-600">Debt Category:</span>
+                        <span className="ml-2 text-sm text-gray-900 capitalize">
+                          {selectedLead.debtCategory || 'N/A'}
+                        </span>
                       </div>
                       <div>
-                        <span className="text-sm font-medium text-gray-600">Debt Amount:</span>
+                        <span className="text-sm font-medium text-gray-600">Debt Types:</span>
                         <span className="ml-2 text-sm text-gray-900">
-                          {selectedLead.budget ? `$${selectedLead.budget.toLocaleString()}` : 'N/A'}
+                          {Array.isArray(selectedLead.debtTypes) && selectedLead.debtTypes.length > 0 
+                            ? selectedLead.debtTypes.join(', ') 
+                            : selectedLead.source || 'N/A'}
                         </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Total Debt Amount:</span>
+                        <span className="ml-2 text-sm text-gray-900">
+                          {selectedLead.totalDebtAmount ? `$${selectedLead.totalDebtAmount.toLocaleString()}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Number of Creditors:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.numberOfCreditors || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Monthly Debt Payment:</span>
+                        <span className="ml-2 text-sm text-gray-900">
+                          {selectedLead.monthlyDebtPayment ? `$${selectedLead.monthlyDebtPayment.toLocaleString()}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Credit Score Range:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.creditScoreRange || 'N/A'}</span>
                       </div>
                       <div>
                         <span className="text-sm font-medium text-gray-600">Category:</span>
@@ -786,21 +973,110 @@ const AdminDashboard = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Agent2 Status Information */}
+                  <div className="bg-gray-50 p-4 rounded-lg md:col-span-2">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Agent2 Status Tracking</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Lead Status:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.leadStatus ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {selectedLead.leadStatus}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Contact Status:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.contactStatus ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                {selectedLead.contactStatus}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Qualification Outcome:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.qualificationOutcome ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                {selectedLead.qualificationOutcome}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Call Disposition:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.callDisposition ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                {selectedLead.callDisposition}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Engagement Outcome:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.engagementOutcome ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                {selectedLead.engagementOutcome}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Disqualification:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.disqualification ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                {selectedLead.disqualification}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Notes Section */}
-                {(selectedLead.requirements || selectedLead.followUpNotes) && (
+                {(selectedLead.notes || selectedLead.requirements || selectedLead.followUpNotes) && (
                   <div className="mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Notes</h4>
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Notes & Comments</h4>
+                    {selectedLead.notes && (
+                      <div className="bg-blue-50 p-4 rounded-lg mb-3">
+                        <span className="text-sm font-medium text-blue-700 block mb-1">Agent1 Notes:</span>
+                        <p className="text-sm text-gray-900">{selectedLead.notes}</p>
+                      </div>
+                    )}
                     {selectedLead.requirements && (
                       <div className="bg-gray-50 p-4 rounded-lg mb-3">
-                        <span className="text-sm font-medium text-gray-600 block mb-1">Initial Notes:</span>
+                        <span className="text-sm font-medium text-gray-600 block mb-1">Requirements:</span>
                         <p className="text-sm text-gray-900">{selectedLead.requirements}</p>
                       </div>
                     )}
                     {selectedLead.followUpNotes && (
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <span className="text-sm font-medium text-gray-600 block mb-1">Follow-up Notes:</span>
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <span className="text-sm font-medium text-green-700 block mb-1">Agent2 Follow-up Notes:</span>
                         <p className="text-sm text-gray-900">{selectedLead.followUpNotes}</p>
                       </div>
                     )}
@@ -817,6 +1093,15 @@ const AdminDashboard = () => {
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Update Lead
+                </button>
+                <button
+                  onClick={() => {
+                    setShowViewModal(false);
+                    handleDeleteLead(selectedLead._id, selectedLead.name);
+                  }}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Delete Lead
                 </button>
                 <button
                   onClick={() => setShowViewModal(false)}

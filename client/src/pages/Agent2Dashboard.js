@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useSocket } from '../contexts/SocketContext';
 import { 
   FileText,
   Clock,
@@ -13,12 +13,35 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const Agent2Dashboard = () => {
+  const { socket } = useSocket();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [updating, setUpdating] = useState(false);
+
+  // Utility functions to mask sensitive data
+  const maskEmail = (email) => {
+    if (!email) return '—';
+    const [username, domain] = email.split('@');
+    if (username.length <= 2) return `${username}***@${domain}`;
+    return `${username.substring(0, 2)}***@${domain}`;
+  };
+
+  const maskPhone = (phone) => {
+    if (!phone) return '—';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length <= 4) return '***-****';
+    return `***-***-${cleaned.slice(-4)}`;
+  };
+
+  const maskAmount = (amount) => {
+    if (!amount) return '—';
+    const amountStr = amount.toString();
+    if (amountStr.length <= 3) return '$***';
+    return `$${amountStr.substring(0, 1)}***`;
+  };
   
   const [filters, setFilters] = useState({
     status: '',
@@ -28,6 +51,12 @@ const Agent2Dashboard = () => {
 
   const [updateData, setUpdateData] = useState({
     status: '',
+    leadStatus: '',
+    contactStatus: '',
+    qualificationOutcome: '',
+    callDisposition: '',
+    engagementOutcome: '',
+    disqualification: '',
     followUpDate: '',
     followUpTime: '',
     followUpNotes: '',
@@ -40,12 +69,43 @@ const Agent2Dashboard = () => {
     // Listen for real-time updates
     const handleRefresh = () => fetchLeads();
     window.addEventListener('refreshLeads', handleRefresh);
+
+    // Socket.IO event listeners for real-time updates
+    if (socket) {
+      const handleLeadUpdated = (data) => {
+        console.log('Lead updated via socket in Agent2:', data);
+        toast.success(`Lead updated successfully`, {
+          duration: 2000,
+          icon: '🔄'
+        });
+        fetchLeads(); // Refresh the leads list
+      };
+
+      const handleLeadCreated = (data) => {
+        console.log('New lead created via socket in Agent2:', data);
+        toast.success(`New lead available`, {
+          duration: 2000,
+          icon: '✅'
+        });
+        fetchLeads(); // Refresh the leads list
+      };
+
+      socket.on('leadUpdated', handleLeadUpdated);
+      socket.on('leadCreated', handleLeadCreated);
+
+      // Cleanup socket listeners
+      return () => {
+        window.removeEventListener('refreshLeads', handleRefresh);
+        socket.off('leadUpdated', handleLeadUpdated);
+        socket.off('leadCreated', handleLeadCreated);
+      };
+    }
     
     return () => {
       window.removeEventListener('refreshLeads', handleRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, socket]);
 
   const fetchLeads = async () => {
     try {
@@ -77,6 +137,26 @@ const Agent2Dashboard = () => {
         status: updateData.status
       };
       
+      // Add Agent2-specific status fields if they have values
+      if (updateData.leadStatus && updateData.leadStatus !== '') {
+        cleanUpdateData.leadStatus = updateData.leadStatus;
+      }
+      if (updateData.contactStatus && updateData.contactStatus !== '') {
+        cleanUpdateData.contactStatus = updateData.contactStatus;
+      }
+      if (updateData.qualificationOutcome && updateData.qualificationOutcome !== '') {
+        cleanUpdateData.qualificationOutcome = updateData.qualificationOutcome;
+      }
+      if (updateData.callDisposition && updateData.callDisposition !== '') {
+        cleanUpdateData.callDisposition = updateData.callDisposition;
+      }
+      if (updateData.engagementOutcome && updateData.engagementOutcome !== '') {
+        cleanUpdateData.engagementOutcome = updateData.engagementOutcome;
+      }
+      if (updateData.disqualification && updateData.disqualification !== '') {
+        cleanUpdateData.disqualification = updateData.disqualification;
+      }
+      
       // Only add optional fields if they have values
       if (updateData.followUpDate && updateData.followUpDate !== '') {
         cleanUpdateData.followUpDate = updateData.followUpDate;
@@ -101,6 +181,12 @@ const Agent2Dashboard = () => {
       setSelectedLead(null);
       setUpdateData({
         status: '',
+        leadStatus: '',
+        contactStatus: '',
+        qualificationOutcome: '',
+        callDisposition: '',
+        engagementOutcome: '',
+        disqualification: '',
         followUpDate: '',
         followUpTime: '',
         followUpNotes: '',
@@ -361,15 +447,20 @@ const Agent2Dashboard = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">{lead.name}</div>
-                      <div className="text-sm text-gray-500">{lead.company}</div>
+                      <div className="text-sm text-gray-500">
+                        {lead.debtCategory ? `${lead.debtCategory.charAt(0).toUpperCase() + lead.debtCategory.slice(1)} Debt` : 'N/A'}
+                      </div>
                       <div className="text-xs text-gray-400">
                         By: {lead.createdBy?.name}
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{lead.email}</div>
-                    <div className="text-sm text-gray-500">{lead.phone}</div>
+                    <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
+                    <div className="text-sm text-gray-500">{maskPhone(lead.phone)}</div>
+                    {lead.alternatePhone && (
+                      <div className="text-xs text-gray-400">Alt: {maskPhone(lead.alternatePhone)}</div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getCategoryBadge(lead.category, lead.completionPercentage)}
@@ -378,10 +469,12 @@ const Agent2Dashboard = () => {
                     {getStatusBadge(lead.status)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {lead.budget ? `$${lead.budget.toLocaleString()}` : 'N/A'}
+                    {lead.totalDebtAmount ? maskAmount(lead.totalDebtAmount) : 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {lead.source || 'N/A'}
+                    {Array.isArray(lead.debtTypes) && lead.debtTypes.length > 0 
+                      ? lead.debtTypes.slice(0, 2).join(', ') + (lead.debtTypes.length > 2 ? '...' : '')
+                      : (lead.source || 'N/A')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
@@ -457,14 +550,12 @@ const Agent2Dashboard = () => {
                         <span className="text-sm font-medium text-gray-600">Phone:</span>
                         <span className="ml-2 text-sm text-gray-900">{selectedLead.phone || 'N/A'}</span>
                       </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Company:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.company || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Job Title:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.jobTitle || 'N/A'}</span>
-                      </div>
+                      {selectedLead.alternatePhone && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Alternate Phone:</span>
+                          <span className="ml-2 text-sm text-gray-900">{selectedLead.alternatePhone}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -500,14 +591,38 @@ const Agent2Dashboard = () => {
                     <h4 className="text-md font-semibold text-gray-900 mb-3">Debt Information</h4>
                     <div className="space-y-2">
                       <div>
-                        <span className="text-sm font-medium text-gray-600">Debt Type:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.source || 'N/A'}</span>
+                        <span className="text-sm font-medium text-gray-600">Debt Category:</span>
+                        <span className="ml-2 text-sm text-gray-900 capitalize">
+                          {selectedLead.debtCategory || 'N/A'}
+                        </span>
                       </div>
                       <div>
-                        <span className="text-sm font-medium text-gray-600">Debt Amount:</span>
+                        <span className="text-sm font-medium text-gray-600">Debt Types:</span>
                         <span className="ml-2 text-sm text-gray-900">
-                          {selectedLead.budget ? `$${selectedLead.budget.toLocaleString()}` : 'N/A'}
+                          {Array.isArray(selectedLead.debtTypes) && selectedLead.debtTypes.length > 0 
+                            ? selectedLead.debtTypes.join(', ') 
+                            : selectedLead.source || 'N/A'}
                         </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Total Debt Amount:</span>
+                        <span className="ml-2 text-sm text-gray-900">
+                          {selectedLead.totalDebtAmount ? `$${selectedLead.totalDebtAmount.toLocaleString()}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Number of Creditors:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.numberOfCreditors || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Monthly Debt Payment:</span>
+                        <span className="ml-2 text-sm text-gray-900">
+                          {selectedLead.monthlyDebtPayment ? `$${selectedLead.monthlyDebtPayment.toLocaleString()}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">Credit Score Range:</span>
+                        <span className="ml-2 text-sm text-gray-900">{selectedLead.creditScoreRange || 'N/A'}</span>
                       </div>
                       <div>
                         <span className="text-sm font-medium text-gray-600">Category:</span>
@@ -554,6 +669,64 @@ const Agent2Dashboard = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Agent2 Status Fields */}
+                {(selectedLead.leadStatus || selectedLead.contactStatus || selectedLead.qualificationOutcome || 
+                  selectedLead.callDisposition || selectedLead.engagementOutcome || selectedLead.disqualification) && (
+                  <div className="mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Agent Status Information</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedLead.leadStatus && (
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-gray-600">Lead Status:</span>
+                          <span className="ml-2 text-sm text-gray-900 capitalize">
+                            {selectedLead.leadStatus.replace('-', ' ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.contactStatus && (
+                        <div className="bg-green-50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-gray-600">Contact Status:</span>
+                          <span className="ml-2 text-sm text-gray-900 capitalize">
+                            {selectedLead.contactStatus.replace('-', ' ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.qualificationOutcome && (
+                        <div className="bg-yellow-50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-gray-600">Qualification:</span>
+                          <span className="ml-2 text-sm text-gray-900 capitalize">
+                            {selectedLead.qualificationOutcome.replace('-', ' ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.callDisposition && (
+                        <div className="bg-purple-50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-gray-600">Call Disposition:</span>
+                          <span className="ml-2 text-sm text-gray-900 capitalize">
+                            {selectedLead.callDisposition.replace('-', ' ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.engagementOutcome && (
+                        <div className="bg-indigo-50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-gray-600">Engagement:</span>
+                          <span className="ml-2 text-sm text-gray-900 capitalize">
+                            {selectedLead.engagementOutcome.replace('-', ' ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.disqualification && (
+                        <div className="bg-red-50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-gray-600">Disqualification:</span>
+                          <span className="ml-2 text-sm text-gray-900 capitalize">
+                            {selectedLead.disqualification.replace('-', ' ')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Notes Section */}
                 {(selectedLead.requirements || selectedLead.followUpNotes) && (
@@ -633,6 +806,114 @@ const Agent2Dashboard = () => {
                           <option value="successful">Successful</option>
                           <option value="follow-up">Follow Up</option>
                       </select>
+                    </div>
+
+                    {/* Agent2 Specific Status Fields */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Lead Status</label>
+                        <select
+                          name="leadStatus"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={updateData.leadStatus}
+                          onChange={(e) => setUpdateData({ ...updateData, leadStatus: e.target.value })}
+                        >
+                          <option value="">Select status</option>
+                          <option value="Warm Transfer – Pre-Qualified">Warm Transfer – Pre-Qualified</option>
+                          <option value="Cold Transfer – Unqualified">Cold Transfer – Unqualified</option>
+                          <option value="From Internal Dept.">From Internal Dept.</option>
+                          <option value="Test / Training Call">Test / Training Call</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Contact Status</label>
+                        <select
+                          name="contactStatus"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={updateData.contactStatus}
+                          onChange={(e) => setUpdateData({ ...updateData, contactStatus: e.target.value })}
+                        >
+                          <option value="">Select status</option>
+                          <option value="Connected & Engaged">Connected & Engaged</option>
+                          <option value="Connected – Requested Callback">Connected – Requested Callback</option>
+                          <option value="No Answer">No Answer</option>
+                          <option value="Wrong Number">Wrong Number</option>
+                          <option value="Call Dropped">Call Dropped</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Qualification Outcome</label>
+                        <select
+                          name="qualificationOutcome"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={updateData.qualificationOutcome}
+                          onChange={(e) => setUpdateData({ ...updateData, qualificationOutcome: e.target.value })}
+                        >
+                          <option value="">Select outcome</option>
+                          <option value="Qualified – Meets Criteria">Qualified – Meets Criteria</option>
+                          <option value="Pre-Qualified – Docs Needed">Pre-Qualified – Docs Needed</option>
+                          <option value="Disqualified – Debt Too Low">Disqualified – Debt Too Low</option>
+                          <option value="Disqualified – Secured Debt Only">Disqualified – Secured Debt Only</option>
+                          <option value="Disqualified – Non-Service State">Disqualified – Non-Service State</option>
+                          <option value="Disqualified – No Hardship">Disqualified – No Hardship</option>
+                          <option value="Disqualified – Active with Competitor">Disqualified – Active with Competitor</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Call Disposition</label>
+                        <select
+                          name="callDisposition"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={updateData.callDisposition}
+                          onChange={(e) => setUpdateData({ ...updateData, callDisposition: e.target.value })}
+                        >
+                          <option value="">Select disposition</option>
+                          <option value="Appointment Scheduled">Appointment Scheduled</option>
+                          <option value="Immediate Enrollment">Immediate Enrollment</option>
+                          <option value="Info Provided – Awaiting Decision">Info Provided – Awaiting Decision</option>
+                          <option value="Nurture – Not Ready">Nurture – Not Ready</option>
+                          <option value="Declined Services">Declined Services</option>
+                          <option value="DNC">DNC</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Engagement Outcome</label>
+                        <select
+                          name="engagementOutcome"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={updateData.engagementOutcome}
+                          onChange={(e) => setUpdateData({ ...updateData, engagementOutcome: e.target.value })}
+                        >
+                          <option value="">Select outcome</option>
+                          <option value="Proceeding with Program">Proceeding with Program</option>
+                          <option value="Callback Needed">Callback Needed</option>
+                          <option value="Left Voicemail">Left Voicemail</option>
+                          <option value="Info Only – Follow-up Needed">Info Only – Follow-up Needed</option>
+                          <option value="Not Interested">Not Interested</option>
+                          <option value="DNC">DNC</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Disqualification Reason</label>
+                        <select
+                          name="disqualification"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={updateData.disqualification}
+                          onChange={(e) => setUpdateData({ ...updateData, disqualification: e.target.value })}
+                        >
+                          <option value="">Select reason</option>
+                          <option value="Debt Too Low">Debt Too Low</option>
+                          <option value="Secured Debt Only">Secured Debt Only</option>
+                          <option value="No Debt">No Debt</option>
+                          <option value="Wrong Number / Bad Contact">Wrong Number / Bad Contact</option>
+                        </select>
+                      </div>
                     </div>
 
                     {/* Follow-up Date (show only if status is follow-up) */}

@@ -427,4 +427,51 @@ router.put('/agents/:id/status', protect, async (req, res) => {
   }
 });
 
+// @desc    Delete agent (Admin only)
+// @route   DELETE /api/auth/agents/:id
+// @access  Private (Admin only)
+router.delete('/agents/:id', protect, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admin can delete agent accounts'
+      });
+    }
+
+    const agent = await User.findById(req.params.id);
+
+    if (!agent || !['agent1', 'agent2'].includes(agent.role)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agent not found'
+      });
+    }
+
+    // Prevent admin from deleting themselves
+    if (agent._id.toString() === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete your own account'
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Agent deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete agent error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting agent',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 module.exports = router;

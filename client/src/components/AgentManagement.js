@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, ToggleLeft, ToggleRight, Eye, EyeOff } from 'lucide-react';
+import { Users, UserPlus, ToggleLeft, ToggleRight, Eye, EyeOff, Trash2 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from './LoadingSpinner';
@@ -49,6 +49,23 @@ const AgentManagement = () => {
       const message = error.response?.data?.message || 'Error updating agent status';
       toast.error(message);
       console.error('Toggle agent status error:', error);
+    }
+  };
+
+  const deleteAgent = async (agentId, agentName) => {
+    if (!window.confirm(`Are you sure you want to delete agent "${agentName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/auth/agents/${agentId}`);
+      
+      setAgents(prev => prev.filter(agent => agent._id !== agentId));
+      toast.success('Agent deleted successfully');
+    } catch (error) {
+      const message = error.response?.data?.message || 'Error deleting agent';
+      toast.error(message);
+      console.error('Delete agent error:', error);
     }
   };
 
@@ -183,21 +200,30 @@ const AgentManagement = () => {
                       </span>
                     </td>
                     <td className="py-4 px-4">
-                      <button
-                        onClick={() => toggleAgentStatus(agent._id, agent.isActive)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          agent.isActive
-                            ? 'text-red-600 hover:bg-red-50'
-                            : 'text-green-600 hover:bg-green-50'
-                        }`}
-                        title={agent.isActive ? 'Deactivate Agent' : 'Activate Agent'}
-                      >
-                        {agent.isActive ? (
-                          <ToggleRight size={20} />
-                        ) : (
-                          <ToggleLeft size={20} />
-                        )}
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => toggleAgentStatus(agent._id, agent.isActive)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            agent.isActive
+                              ? 'text-red-600 hover:bg-red-50'
+                              : 'text-green-600 hover:bg-green-50'
+                          }`}
+                          title={agent.isActive ? 'Deactivate Agent' : 'Activate Agent'}
+                        >
+                          {agent.isActive ? (
+                            <ToggleRight size={20} />
+                          ) : (
+                            <ToggleLeft size={20} />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => deleteAgent(agent._id, agent.name)}
+                          className="p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete Agent"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

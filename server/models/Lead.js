@@ -27,8 +27,54 @@ const leadSchema = new mongoose.Schema({
       message: 'Please enter a valid phone number'
     }
   },
+  alternatePhone: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // allow missing/undefined
+        const str = String(v).trim();
+        if (str === '') return true; // treat empty as not provided
+        return /^[\d+\-()\s]{5,20}$/.test(str);
+      },
+      message: 'Please enter a valid alternate phone number'
+    }
+  },
   
-  // Lead Details
+  // Debt Information
+  debtCategory: {
+    type: String,
+    enum: ['secured', 'unsecured'],
+    default: 'unsecured'
+  },
+  debtTypes: [{
+    type: String,
+    enum: [
+      // Secured Debt Types
+      'Mortgage Loans', 'Auto Loans', 'Secured Personal Loans', 'Home Equity Loans', 'Title Loans',
+      // Unsecured Debt Types
+      'Credit Cards', 'Instalment Loans (Unsecured)', 'Medical Bills', 'Utility Bills', 'Payday Loans',
+      'Student Loans (private loan)', 'Store/Charge Cards', 'Overdraft Balances', 'Business Loans (unsecured)', 'Collection Accounts'
+    ]
+  }],
+  totalDebtAmount: {
+    type: Number,
+    min: [0, 'Total debt amount cannot be negative']
+  },
+  numberOfCreditors: {
+    type: Number,
+    min: [0, 'Number of creditors cannot be negative']
+  },
+  monthlyDebtPayment: {
+    type: Number,
+    min: [0, 'Monthly debt payment cannot be negative']
+  },
+  creditScoreRange: {
+    type: String,
+    enum: ['300-549', '550-649', '650-699', '700-749', '750-850']
+  },
+  
+  // Lead Details (Legacy)
   budget: {
     type: Number,
     min: [0, 'Budget cannot be negative']
@@ -109,6 +155,32 @@ const leadSchema = new mongoose.Schema({
     default: 'new'
   },
   
+  // Agent 2 Status Fields
+  leadStatus: {
+    type: String,
+    enum: ['Warm Transfer – Pre-Qualified', 'Cold Transfer – Unqualified', 'From Internal Dept.', 'Test / Training Call']
+  },
+  contactStatus: {
+    type: String,
+    enum: ['Connected & Engaged', 'Connected – Requested Callback', 'No Answer', 'Wrong Number', 'Call Dropped']
+  },
+  qualificationOutcome: {
+    type: String,
+    enum: ['Qualified – Meets Criteria', 'Pre-Qualified – Docs Needed', 'Disqualified – Debt Too Low', 'Disqualified – Secured Debt Only', 'Disqualified – Non-Service State', 'Disqualified – No Hardship', 'Disqualified – Active with Competitor']
+  },
+  callDisposition: {
+    type: String,
+    enum: ['Appointment Scheduled', 'Immediate Enrollment', 'Info Provided – Awaiting Decision', 'Nurture – Not Ready', 'Declined Services', 'DNC']
+  },
+  engagementOutcome: {
+    type: String,
+    enum: ['Proceeding with Program', 'Callback Needed', 'Left Voicemail', 'Info Only – Follow-up Needed', 'Not Interested', 'DNC']
+  },
+  disqualification: {
+    type: String,
+    enum: ['Debt Too Low', 'Secured Debt Only', 'No Debt', 'Wrong Number / Bad Contact']
+  },
+  
   // Follow-up Information
   followUpDate: {
     type: Date
@@ -146,6 +218,15 @@ const leadSchema = new mongoose.Schema({
   conversionValue: {
     type: Number,
     min: 0
+  },
+  
+  // Admin processing flag
+  adminProcessed: {
+    type: Boolean,
+    default: false
+  },
+  adminProcessedAt: {
+    type: Date
   }
 }, {
   timestamps: true
@@ -161,9 +242,8 @@ leadSchema.index({ followUpDate: 1 });
 // Pre-save middleware to calculate completion percentage and category
 leadSchema.pre('save', function(next) {
   const requiredFields = [
-    'name', 'email', 'phone', 'budget', 'source', 
-    'company', 'jobTitle', 'location', 'requirements',
-    'address', 'city', 'state', 'zipcode'
+    'name', 'email', 'phone', 'totalDebtAmount', 'debtCategory', 
+    'numberOfCreditors', 'monthlyDebtPayment', 'creditScoreRange'
   ];
   
   let filledFields = 0;
