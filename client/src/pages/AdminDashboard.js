@@ -167,13 +167,15 @@ const AdminDashboard = () => {
       if (isRefresh) setRefreshing(true);
       
       const response = await axios.get('/api/leads/dashboard/stats');
-      setStats(response.data.data);
+      const statsData = response.data?.data;
+      setStats(statsData || {});
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching stats:', error);
       if (!isRefresh) {
         toast.error('Failed to fetch dashboard statistics');
       }
+      setStats({}); // Set empty object on error
     } finally {
       setLoading(false);
       if (isRefresh) setRefreshing(false);
@@ -191,10 +193,12 @@ const AdminDashboard = () => {
       if (filters.search) params.append('search', filters.search);
 
       const response = await axios.get(`/api/leads?${params.toString()}`);
-      setLeads(response.data.data.leads);
+      const leadsData = response.data?.data?.leads;
+      setLeads(Array.isArray(leadsData) ? leadsData : []);
     } catch (error) {
       console.error('Error fetching leads:', error);
       toast.error('Failed to fetch leads');
+      setLeads([]); // Set empty array on error
     }
   };
 

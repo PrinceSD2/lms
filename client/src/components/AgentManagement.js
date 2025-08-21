@@ -17,11 +17,14 @@ const AgentManagement = () => {
   const fetchAgents = async () => {
     try {
       const response = await axios.get('/api/auth/agents');
-      setAgents(response.data.data.agents);
+      // Fix: API returns { success, count, data: agents } structure
+      setAgents(Array.isArray(response.data.data) ? response.data.data : []);
     } catch (error) {
       const message = error.response?.data?.message || 'Error fetching agents';
       toast.error(message);
       console.error('Fetch agents error:', error);
+      // Set empty array on error to prevent length errors
+      setAgents([]);
     } finally {
       setLoading(false);
     }

@@ -107,19 +107,22 @@ const Agent1Dashboard = () => {
   const fetchLeads = async () => {
     try {
       const response = await axios.get('/api/leads?page=1&limit=10');
-      const leadsData = response.data.data.leads;
-      setLeads(leadsData);
+      const leadsData = response.data?.data?.leads;
+      const validLeads = Array.isArray(leadsData) ? leadsData : [];
+      setLeads(validLeads);
       
       // Calculate stats
-      const total = leadsData.length;
-      const hot = leadsData.filter(lead => lead.category === 'hot').length;
-      const warm = leadsData.filter(lead => lead.category === 'warm').length;
-      const cold = leadsData.filter(lead => lead.category === 'cold').length;
+      const total = validLeads.length;
+      const hot = validLeads.filter(lead => lead.category === 'hot').length;
+      const warm = validLeads.filter(lead => lead.category === 'warm').length;
+      const cold = validLeads.filter(lead => lead.category === 'cold').length;
       
       setStats({ totalLeads: total, hotLeads: hot, warmLeads: warm, coldLeads: cold });
     } catch (error) {
       console.error('Error fetching leads:', error);
       toast.error('Failed to fetch leads');
+      setLeads([]);
+      setStats({ totalLeads: 0, hotLeads: 0, warmLeads: 0, coldLeads: 0 });
     } finally {
       setLoading(false);
     }
