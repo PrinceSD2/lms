@@ -181,6 +181,38 @@ const leadSchema = new mongoose.Schema({
     enum: ['Debt Too Low', 'Secured Debt Only', 'No Debt', 'Wrong Number / Bad Contact']
   },
   
+  // Agent 2 Unified Progress Status (New field)
+  leadProgressStatus: {
+    type: String,
+    enum: [
+      'Appointment Scheduled',
+      'Immediate Enrollment', 
+      'Info Provided – Awaiting Decision',
+      'Nurture – Not Ready',
+      'Qualified – Meets Criteria',
+      'Pre-Qualified – Docs Needed',
+      'Disqualified – Debt Too Low',
+      'Disqualified – Secured Debt Only',
+      'Disqualified – Non-Service State',
+      'Disqualified – Active with Competitor',
+      'Callback Needed',
+      'Left Voicemail',
+      'Not Interested',
+      'DNC (Do Not Contact)'
+    ]
+  },
+  
+  // Agent 2 Tracking Fields
+  agent2LastAction: {
+    type: String
+  },
+  lastUpdatedBy: {
+    type: String
+  },
+  lastUpdatedAt: {
+    type: Date
+  },
+  
   // Follow-up Information
   followUpDate: {
     type: Date

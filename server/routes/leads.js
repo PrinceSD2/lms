@@ -189,7 +189,38 @@ const updateLeadValidation = [
         throw new Error('Conversion value must be a positive number');
       }
       return true;
-    })
+    }),
+  body('leadProgressStatus')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn([
+      'Appointment Scheduled',
+      'Immediate Enrollment', 
+      'Info Provided – Awaiting Decision',
+      'Nurture – Not Ready',
+      'Qualified – Meets Criteria',
+      'Pre-Qualified – Docs Needed',
+      'Disqualified – Debt Too Low',
+      'Disqualified – Secured Debt Only',
+      'Disqualified – Non-Service State',
+      'Disqualified – Active with Competitor',
+      'Callback Needed',
+      'Left Voicemail',
+      'Not Interested',
+      'DNC (Do Not Contact)'
+    ])
+    .withMessage('Invalid lead progress status'),
+  body('agent2LastAction')
+    .optional()
+    .isString()
+    .withMessage('Agent2 last action must be a string'),
+  body('lastUpdatedBy')
+    .optional()
+    .isString()
+    .withMessage('Last updated by must be a string'),
+  body('lastUpdatedAt')
+    .optional()
+    .isISO8601()
+    .withMessage('Last updated at must be a valid date')
 ];
 
 // @desc    Get all leads with pagination and filtering
@@ -423,7 +454,8 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     const updateFields = [
       'status', 'leadStatus', 'contactStatus', 'qualificationOutcome', 
       'callDisposition', 'engagementOutcome', 'disqualification',
-      'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue'
+      'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue',
+      'leadProgressStatus', 'agent2LastAction', 'lastUpdatedBy', 'lastUpdatedAt'
     ];
     updateFields.forEach(field => {
       if (req.body[field] !== undefined) {

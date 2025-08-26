@@ -12,6 +12,24 @@ import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 
+// Unified Lead Progress Status options for Agent 2
+const agent2LeadProgressOptions = [
+  "Appointment Scheduled",
+  "Immediate Enrollment",
+  "Info Provided – Awaiting Decision",
+  "Nurture – Not Ready",
+  "Qualified – Meets Criteria",
+  "Pre-Qualified – Docs Needed",
+  "Disqualified – Debt Too Low",
+  "Disqualified – Secured Debt Only",
+  "Disqualified – Non-Service State",
+  "Disqualified – Active with Competitor",
+  "Callback Needed",
+  "Left Voicemail",
+  "Not Interested",
+  "DNC (Do Not Contact)"
+];
+
 const Agent2Dashboard = () => {
   const { socket } = useSocket();
   const [leads, setLeads] = useState([]);
@@ -50,13 +68,7 @@ const Agent2Dashboard = () => {
   });
 
   const [updateData, setUpdateData] = useState({
-    status: '',
-    leadStatus: '',
-    contactStatus: '',
-    qualificationOutcome: '',
-    callDisposition: '',
-    engagementOutcome: '',
-    disqualification: '',
+    leadProgressStatus: '',
     followUpDate: '',
     followUpTime: '',
     followUpNotes: '',
@@ -135,28 +147,14 @@ const Agent2Dashboard = () => {
 
     try {
       // Clean the update data to remove empty strings
-      const cleanUpdateData = {
-        status: updateData.status
-      };
+      const cleanUpdateData = {};
       
-      // Add Agent2-specific status fields if they have values
-      if (updateData.leadStatus && updateData.leadStatus !== '') {
-        cleanUpdateData.leadStatus = updateData.leadStatus;
-      }
-      if (updateData.contactStatus && updateData.contactStatus !== '') {
-        cleanUpdateData.contactStatus = updateData.contactStatus;
-      }
-      if (updateData.qualificationOutcome && updateData.qualificationOutcome !== '') {
-        cleanUpdateData.qualificationOutcome = updateData.qualificationOutcome;
-      }
-      if (updateData.callDisposition && updateData.callDisposition !== '') {
-        cleanUpdateData.callDisposition = updateData.callDisposition;
-      }
-      if (updateData.engagementOutcome && updateData.engagementOutcome !== '') {
-        cleanUpdateData.engagementOutcome = updateData.engagementOutcome;
-      }
-      if (updateData.disqualification && updateData.disqualification !== '') {
-        cleanUpdateData.disqualification = updateData.disqualification;
+      if (updateData.leadProgressStatus && updateData.leadProgressStatus !== '') {
+        cleanUpdateData.leadProgressStatus = updateData.leadProgressStatus;
+        // Add metadata for admin tracking
+        cleanUpdateData.lastUpdatedBy = 'Agent2';
+        cleanUpdateData.lastUpdatedAt = new Date().toISOString();
+        cleanUpdateData.agent2LastAction = updateData.leadProgressStatus;
       }
       
       // Only add optional fields if they have values
@@ -173,29 +171,39 @@ const Agent2Dashboard = () => {
         cleanUpdateData.conversionValue = parseFloat(updateData.conversionValue);
       }
       
+      console.log('Update form data:', updateData);
       console.log('Sending update request with cleaned data:', cleanUpdateData);
       console.log('Selected lead ID:', selectedLead._id);
       
-      await axios.put(`/api/leads/${selectedLead._id}`, cleanUpdateData);
+      // Check if we have any data to update
+      if (Object.keys(cleanUpdateData).length === 0) {
+        toast.error('Please select a Lead Progress Status to update');
+        return;
+      }
+      
+      const response = await axios.put(`/api/leads/${selectedLead._id}`, cleanUpdateData);
+      console.log('Update response:', response.data);
+      
       toast.success('Lead updated successfully!');
       
-      setShowUpdateModal(false);
-      setSelectedLead(null);
-      setUpdateData({
-        status: '',
-        leadStatus: '',
-        contactStatus: '',
-        qualificationOutcome: '',
-        callDisposition: '',
-        engagementOutcome: '',
-        disqualification: '',
-        followUpDate: '',
-        followUpTime: '',
-        followUpNotes: '',
-        conversionValue: ''
-      });
+      // Refresh leads data first
+      await fetchLeads();
       
-      fetchLeads();
+      // Update the selected lead with new data to show immediately in view modal
+      const updatedLead = { ...selectedLead, ...cleanUpdateData };
+      setSelectedLead(updatedLead);
+      
+      // Close modal after a short delay to ensure data is refreshed
+      setTimeout(() => {
+        setShowUpdateModal(false);
+        setUpdateData({
+          leadProgressStatus: '',
+          followUpDate: '',
+          followUpTime: '',
+          followUpNotes: '',
+          conversionValue: ''
+        });
+      }, 500);
     } catch (error) {
       console.error('Error updating lead:', error);
       console.error('Error response:', error.response);
@@ -208,7 +216,7 @@ const Agent2Dashboard = () => {
   const openUpdateModal = (lead) => {
     setSelectedLead(lead);
     setUpdateData({
-      status: lead.status || 'new',
+      leadProgressStatus: lead.leadProgressStatus || lead.agent2LastAction || '',
       followUpDate: lead.followUpDate ? new Date(lead.followUpDate).toISOString().split('T')[0] : '',
       followUpTime: lead.followUpTime || '',
       followUpNotes: lead.followUpNotes || '',
@@ -220,6 +228,10 @@ const Agent2Dashboard = () => {
   const openViewModal = (lead) => {
     setSelectedLead(lead);
     setShowViewModal(true);
+    // Log the lead data to debug
+    console.log('Opening view modal for lead:', lead);
+    console.log('Lead Progress Status:', lead.leadProgressStatus);
+    console.log('Agent2 Last Action:', lead.agent2LastAction);
   };
 
   const getCategoryBadge = (category, completionPercentage) => {
@@ -370,22 +382,6 @@ const Agent2Dashboard = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
-              className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            >
-              <option value="">All Status</option>
-              <option value="new">New</option>
-              <option value="interested">Interested</option>
-              <option value="not-interested">Not Interested</option>
-              <option value="successful">Successful</option>
-              <option value="follow-up">Follow Up</option>
-            </select>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select
               className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
@@ -430,9 +426,6 @@ const Agent2Dashboard = () => {
                   Category
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Debt Amount
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -467,9 +460,6 @@ const Agent2Dashboard = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getCategoryBadge(lead.category, lead.completionPercentage)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(lead.status)}
-                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {lead.totalDebtAmount ? maskAmount(lead.totalDebtAmount) : 'N/A'}
                   </td>
@@ -496,7 +486,7 @@ const Agent2Dashboard = () => {
               ))}
               {leads.length === 0 && (
                 <tr>
-                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
                     No leads found matching your criteria.
                   </td>
                 </tr>
@@ -651,6 +641,28 @@ const Agent2Dashboard = () => {
                           {selectedLead.createdAt ? new Date(selectedLead.createdAt).toLocaleDateString() : 'N/A'}
                         </span>
                       </div>
+                      {selectedLead.lastUpdatedBy && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Last Updated By:</span>
+                          <span className="ml-2 text-sm text-gray-900">{selectedLead.lastUpdatedBy}</span>
+                        </div>
+                      )}
+                      {selectedLead.lastUpdatedAt && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Last Updated:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {new Date(selectedLead.lastUpdatedAt).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.agent2LastAction && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Agent 2 Last Action:</span>
+                          <span className="ml-2 text-sm font-semibold text-blue-700">
+                            {selectedLead.agent2LastAction}
+                          </span>
+                        </div>
+                      )}
                       {selectedLead.followUpDate && (
                         <div>
                           <span className="text-sm font-medium text-gray-600">Follow-up Date:</span>
@@ -672,12 +684,44 @@ const Agent2Dashboard = () => {
                   </div>
                 </div>
 
+                {/* Lead Progress Status - Prominent Display for Agent 2 */}
+                {selectedLead.leadProgressStatus && (
+                  <div className="mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Current Lead Progress Status</h4>
+                    <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          <CheckCircle className="h-5 w-5 text-blue-400" />
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm font-medium text-blue-800">
+                            Status: <span className="font-bold">{selectedLead.leadProgressStatus}</span>
+                          </p>
+                          {selectedLead.lastUpdatedAt && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              Updated: {new Date(selectedLead.lastUpdatedAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Agent2 Status Fields */}
-                {(selectedLead.leadStatus || selectedLead.contactStatus || selectedLead.qualificationOutcome || 
+                {(selectedLead.leadProgressStatus || selectedLead.leadStatus || selectedLead.contactStatus || selectedLead.qualificationOutcome || 
                   selectedLead.callDisposition || selectedLead.engagementOutcome || selectedLead.disqualification) && (
                   <div className="mt-6">
                     <h4 className="text-md font-semibold text-gray-900 mb-3">Agent Status Information</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedLead.leadProgressStatus && (
+                        <div className="bg-blue-50 p-3 rounded-lg col-span-2">
+                          <span className="text-sm font-medium text-gray-600">Lead Progress Status:</span>
+                          <span className="ml-2 text-sm text-gray-900 font-semibold">
+                            {selectedLead.leadProgressStatus}
+                          </span>
+                        </div>
+                      )}
                       {selectedLead.leadStatus && (
                         <div className="bg-blue-50 p-3 rounded-lg">
                           <span className="text-sm font-medium text-gray-600">Lead Status:</span>
@@ -761,6 +805,21 @@ const Agent2Dashboard = () => {
                   Update Lead
                 </button>
                 <button
+                  onClick={async () => {
+                    await fetchLeads();
+                    // Find and update the selected lead with fresh data
+                    const updatedLeads = await axios.get(`/api/leads`);
+                    const freshLead = updatedLeads.data?.data?.leads?.find(l => l._id === selectedLead._id);
+                    if (freshLead) {
+                      setSelectedLead(freshLead);
+                      console.log('Refreshed lead data:', freshLead);
+                    }
+                  }}
+                  className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Refresh
+                </button>
+                <button
                   onClick={() => setShowViewModal(false)}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
                 >
@@ -792,134 +851,25 @@ const Agent2Dashboard = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Status */}
+                    {/* Unified Lead Progress Status Dropdown */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Status *</label>
+                      <label className="block text-sm font-medium text-gray-700">Lead Progress Status *</label>
                       <select
-                        name="status"
+                        name="leadProgressStatus"
                         required
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        value={updateData.status}
-                        onChange={(e) => setUpdateData({ ...updateData, status: e.target.value })}
+                        value={updateData.leadProgressStatus}
+                        onChange={(e) => setUpdateData({ ...updateData, leadProgressStatus: e.target.value })}
                       >
-                          <option value="new">New</option>
-                          <option value="interested">Interested</option>
-                          <option value="not-interested">Not Interested</option>
-                          <option value="successful">Successful</option>
-                          <option value="follow-up">Follow Up</option>
+                        <option value="">Select Lead Progress Status</option>
+                        {agent2LeadProgressOptions.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
                       </select>
                     </div>
 
-                    {/* Agent2 Specific Status Fields */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Lead Status</label>
-                        <select
-                          name="leadStatus"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          value={updateData.leadStatus}
-                          onChange={(e) => setUpdateData({ ...updateData, leadStatus: e.target.value })}
-                        >
-                          <option value="">Select status</option>
-                          <option value="Warm Transfer – Pre-Qualified">Warm Transfer – Pre-Qualified</option>
-                          <option value="Cold Transfer – Unqualified">Cold Transfer – Unqualified</option>
-                          <option value="From Internal Dept.">From Internal Dept.</option>
-                          <option value="Test / Training Call">Test / Training Call</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Contact Status</label>
-                        <select
-                          name="contactStatus"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          value={updateData.contactStatus}
-                          onChange={(e) => setUpdateData({ ...updateData, contactStatus: e.target.value })}
-                        >
-                          <option value="">Select status</option>
-                          <option value="Connected & Engaged">Connected & Engaged</option>
-                          <option value="Connected – Requested Callback">Connected – Requested Callback</option>
-                          <option value="No Answer">No Answer</option>
-                          <option value="Wrong Number">Wrong Number</option>
-                          <option value="Call Dropped">Call Dropped</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Qualification Outcome</label>
-                        <select
-                          name="qualificationOutcome"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          value={updateData.qualificationOutcome}
-                          onChange={(e) => setUpdateData({ ...updateData, qualificationOutcome: e.target.value })}
-                        >
-                          <option value="">Select outcome</option>
-                          <option value="Qualified – Meets Criteria">Qualified – Meets Criteria</option>
-                          <option value="Pre-Qualified – Docs Needed">Pre-Qualified – Docs Needed</option>
-                          <option value="Disqualified – Debt Too Low">Disqualified – Debt Too Low</option>
-                          <option value="Disqualified – Secured Debt Only">Disqualified – Secured Debt Only</option>
-                          <option value="Disqualified – Non-Service State">Disqualified – Non-Service State</option>
-                          <option value="Disqualified – No Hardship">Disqualified – No Hardship</option>
-                          <option value="Disqualified – Active with Competitor">Disqualified – Active with Competitor</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Call Disposition</label>
-                        <select
-                          name="callDisposition"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          value={updateData.callDisposition}
-                          onChange={(e) => setUpdateData({ ...updateData, callDisposition: e.target.value })}
-                        >
-                          <option value="">Select disposition</option>
-                          <option value="Appointment Scheduled">Appointment Scheduled</option>
-                          <option value="Immediate Enrollment">Immediate Enrollment</option>
-                          <option value="Info Provided – Awaiting Decision">Info Provided – Awaiting Decision</option>
-                          <option value="Nurture – Not Ready">Nurture – Not Ready</option>
-                          <option value="Declined Services">Declined Services</option>
-                          <option value="DNC">DNC</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Engagement Outcome</label>
-                        <select
-                          name="engagementOutcome"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          value={updateData.engagementOutcome}
-                          onChange={(e) => setUpdateData({ ...updateData, engagementOutcome: e.target.value })}
-                        >
-                          <option value="">Select outcome</option>
-                          <option value="Proceeding with Program">Proceeding with Program</option>
-                          <option value="Callback Needed">Callback Needed</option>
-                          <option value="Left Voicemail">Left Voicemail</option>
-                          <option value="Info Only – Follow-up Needed">Info Only – Follow-up Needed</option>
-                          <option value="Not Interested">Not Interested</option>
-                          <option value="DNC">DNC</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Disqualification Reason</label>
-                        <select
-                          name="disqualification"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          value={updateData.disqualification}
-                          onChange={(e) => setUpdateData({ ...updateData, disqualification: e.target.value })}
-                        >
-                          <option value="">Select reason</option>
-                          <option value="Debt Too Low">Debt Too Low</option>
-                          <option value="Secured Debt Only">Secured Debt Only</option>
-                          <option value="No Debt">No Debt</option>
-                          <option value="Wrong Number / Bad Contact">Wrong Number / Bad Contact</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Follow-up Date (show only if status is follow-up) */}
-                    {updateData.status === 'follow-up' && (
+                    {/* Follow-up Date (show only if status requires follow-up) */}
+                    {(updateData.leadProgressStatus === 'Callback Needed' || updateData.leadProgressStatus === 'Nurture – Not Ready') && (
                       <>
                         <div>
                           <label className="block text-sm font-medium text-gray-700">Follow-up Date</label>
@@ -958,7 +908,7 @@ const Agent2Dashboard = () => {
                     )}
 
                     {/* Conversion Value (show only if status is successful) */}
-                    {updateData.status === 'successful' && (
+                    {updateData.leadProgressStatus === 'Immediate Enrollment' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Conversion Value</label>
                         <input
