@@ -25,6 +25,12 @@ const Agent1Dashboard = () => {
     assignmentNotes: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  
+  // Error state for form validation
+  const [formErrors, setFormErrors] = useState({
+    phone: '',
+    alternatePhone: ''
+  });
 
   // Utility functions to mask sensitive data
   const maskEmail = (email) => {
@@ -152,9 +158,23 @@ const Agent1Dashboard = () => {
     // Remove all non-digits
     let cleanValue = value.replace(/\D/g, '');
     
-    // Limit to 10 digits
+    // Clear any existing errors for this field
+    setFormErrors(prev => ({
+      ...prev,
+      [name]: ''
+    }));
+    
+    // Validate phone number length
     if (cleanValue.length > 10) {
       cleanValue = cleanValue.slice(0, 10);
+    }
+    
+    // Show error if phone number is incomplete (less than 10 digits) and field is not empty
+    if (cleanValue.length > 0 && cleanValue.length < 10) {
+      setFormErrors(prev => ({
+        ...prev,
+        [name]: 'Phone number must be exactly 10 digits'
+      }));
     }
     
     // Store as +1 + 10 digits for backend, but display only the 10 digits
@@ -173,6 +193,52 @@ const Agent1Dashboard = () => {
       return phoneValue.slice(2); // Remove +1 prefix for display
     }
     return phoneValue.replace(/\D/g, ''); // Remove non-digits if any
+  };
+
+  // Validate phone number on blur
+  const handlePhoneBlur = (e) => {
+    const { name, value } = e.target;
+    const cleanValue = value.replace(/\D/g, '');
+    
+    if (cleanValue.length > 0 && cleanValue.length < 10) {
+      setFormErrors(prev => ({
+        ...prev,
+        [name]: 'Phone number must be exactly 10 digits'
+      }));
+    } else if (cleanValue.length === 10) {
+      // Clear error if phone number is valid
+      setFormErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+  };
+
+  // Validate all form fields before submission
+  const validateForm = () => {
+    const errors = { phone: '', alternatePhone: '' };
+    let isValid = true;
+
+    // Validate primary phone if provided
+    if (formData.phone) {
+      const phoneDigits = getDisplayPhone(formData.phone);
+      if (phoneDigits.length !== 10) {
+        errors.phone = 'Phone number must be exactly 10 digits';
+        isValid = false;
+      }
+    }
+
+    // Validate alternate phone if provided
+    if (formData.alternatePhone) {
+      const altPhoneDigits = getDisplayPhone(formData.alternatePhone);
+      if (altPhoneDigits.length !== 10) {
+        errors.alternatePhone = 'Phone number must be exactly 10 digits';
+        isValid = false;
+      }
+    }
+
+    setFormErrors(errors);
+    return isValid;
   };
 
   // Auto-progression functionality - double space to move to next field
@@ -252,6 +318,13 @@ const Agent1Dashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate form before submission
+    if (!validateForm()) {
+      toast.error('Please fix the validation errors before submitting');
+      return;
+    }
+    
     setSubmitting(true);
 
     try {
@@ -373,6 +446,13 @@ const Agent1Dashboard = () => {
         zipcode: '',
         notes: ''
       });
+      
+      // Clear form errors
+      setFormErrors({
+        phone: '',
+        alternatePhone: ''
+      });
+      
       setShowForm(false);
 
       fetchLeads();
@@ -389,6 +469,13 @@ const Agent1Dashboard = () => {
   // Handle edit lead functionality
   const handleEditLead = async (e) => {
     e.preventDefault();
+    
+    // Validate form before submission
+    if (!validateForm()) {
+      toast.error('Please fix the validation errors before submitting');
+      return;
+    }
+    
     setSubmitting(true);
 
     try {
@@ -507,6 +594,13 @@ const Agent1Dashboard = () => {
         zipcode: '',
         notes: ''
       });
+      
+      // Clear form errors
+      setFormErrors({
+        phone: '',
+        alternatePhone: ''
+      });
+      
       setShowEditModal(false);
       setEditingLead(null);
 
@@ -542,6 +636,13 @@ const Agent1Dashboard = () => {
       zipcode: lead.zipcode || '',
       notes: lead.notes || ''
     });
+    
+    // Clear any existing form errors
+    setFormErrors({
+      phone: '',
+      alternatePhone: ''
+    });
+    
     setShowEditModal(true);
   };
 
@@ -949,14 +1050,22 @@ const Agent1Dashboard = () => {
                             <input
                               type="tel"
                               name="phone"
-                              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
+                              className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white ${
+                                formErrors.phone 
+                                  ? 'border-red-300 focus:ring-red-500' 
+                                  : 'border-gray-200 focus:ring-primary-500'
+                              }`}
                               value={getDisplayPhone(formData.phone)}
                               onChange={handlePhoneInputChange}
+                              onBlur={handlePhoneBlur}
                               onKeyDown={handleKeyDown}
                               placeholder="Enter 10 digits (e.g. 2345678901)"
                               maxLength="10"
                             />
                           </div>
+                          {formErrors.phone && (
+                            <p className="mt-1 text-sm text-red-600">{formErrors.phone}</p>
+                          )}
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Alternate Phone</label>
@@ -967,14 +1076,22 @@ const Agent1Dashboard = () => {
                             <input
                               type="tel"
                               name="alternatePhone"
-                              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
+                              className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white ${
+                                formErrors.alternatePhone 
+                                  ? 'border-red-300 focus:ring-red-500' 
+                                  : 'border-gray-200 focus:ring-primary-500'
+                              }`}
                               value={getDisplayPhone(formData.alternatePhone)}
                               onChange={handlePhoneInputChange}
+                              onBlur={handlePhoneBlur}
                               onKeyDown={handleKeyDown}
                               placeholder="Enter 10 digits (optional)"
                               maxLength="10"
                             />
                           </div>
+                          {formErrors.alternatePhone && (
+                            <p className="mt-1 text-sm text-red-600">{formErrors.alternatePhone}</p>
+                          )}
                         </div>
                       </div>                      {/* Address */}
                       <div>
@@ -1339,14 +1456,22 @@ const Agent1Dashboard = () => {
                             <input
                               type="tel"
                               name="phone"
-                              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
+                              className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white ${
+                                formErrors.phone 
+                                  ? 'border-red-300 focus:ring-red-500' 
+                                  : 'border-gray-200 focus:ring-primary-500'
+                              }`}
                               value={getDisplayPhone(formData.phone)}
                               onChange={handlePhoneInputChange}
+                              onBlur={handlePhoneBlur}
                               onKeyDown={handleKeyDown}
                               placeholder="Enter 10 digits (e.g. 2345678901)"
                               maxLength="10"
                             />
                           </div>
+                          {formErrors.phone && (
+                            <p className="mt-1 text-sm text-red-600">{formErrors.phone}</p>
+                          )}
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Alternate Phone</label>
@@ -1357,14 +1482,22 @@ const Agent1Dashboard = () => {
                             <input
                               type="tel"
                               name="alternatePhone"
-                              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
+                              className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white ${
+                                formErrors.alternatePhone 
+                                  ? 'border-red-300 focus:ring-red-500' 
+                                  : 'border-gray-200 focus:ring-primary-500'
+                              }`}
                               value={getDisplayPhone(formData.alternatePhone)}
                               onChange={handlePhoneInputChange}
+                              onBlur={handlePhoneBlur}
                               onKeyDown={handleKeyDown}
                               placeholder="Enter 10 digits (optional)"
                               maxLength="10"
                             />
                           </div>
+                          {formErrors.alternatePhone && (
+                            <p className="mt-1 text-sm text-red-600">{formErrors.alternatePhone}</p>
+                          )}
                         </div>
                       </div>                      {/* Address */}
                       <div>
