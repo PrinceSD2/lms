@@ -17,6 +17,9 @@ const Profile = () => {
   });
   const [updating, setUpdating] = useState(false);
 
+  // Check if user can edit profile (only admin and superadmin)
+  const canEditProfile = ['admin', 'superadmin'].includes(user.role);
+
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
     setUpdating(true);
@@ -126,24 +129,26 @@ const Profile = () => {
               <User className="h-4 w-4 mr-2 inline" />
               Profile Information
             </button>
-            <button
-              onClick={() => setActiveTab('password')}
-              className={`${
-                activeTab === 'password'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm`}
-            >
-              <Lock className="h-4 w-4 mr-2 inline" />
-              Change Password
-            </button>
+            {canEditProfile && (
+              <button
+                onClick={() => setActiveTab('password')}
+                className={`${
+                  activeTab === 'password'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm`}
+              >
+                <Lock className="h-4 w-4 mr-2 inline" />
+                Change Password
+              </button>
+            )}
           </nav>
         </div>
 
         {/* Tab Content */}
         <div className="p-6">
           {activeTab === 'profile' && (
-            <form onSubmit={handleProfileSubmit} className="space-y-6">
+            <div className="space-y-6">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700">
@@ -154,10 +159,14 @@ const Profile = () => {
                       type="text"
                       id="name"
                       name="name"
-                      required
-                      className="appearance-none block w-full px-3 py-2 pl-10 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      disabled={!canEditProfile}
+                      className={`appearance-none block w-full px-3 py-2 pl-10 border border-gray-300 rounded-md placeholder-gray-400 ${
+                        canEditProfile 
+                          ? 'focus:outline-none focus:ring-primary-500 focus:border-primary-500' 
+                          : 'bg-gray-100 cursor-not-allowed'
+                      }`}
                       value={profileData.name}
-                      onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                      onChange={(e) => canEditProfile && setProfileData({ ...profileData, name: e.target.value })}
                     />
                     <User className="h-5 w-5 text-gray-400 absolute left-3 top-2.5" />
                   </div>
@@ -172,10 +181,14 @@ const Profile = () => {
                       type="email"
                       id="email"
                       name="email"
-                      required
-                      className="appearance-none block w-full px-3 py-2 pl-10 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      disabled={!canEditProfile}
+                      className={`appearance-none block w-full px-3 py-2 pl-10 border border-gray-300 rounded-md placeholder-gray-400 ${
+                        canEditProfile 
+                          ? 'focus:outline-none focus:ring-primary-500 focus:border-primary-500' 
+                          : 'bg-gray-100 cursor-not-allowed'
+                      }`}
                       value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                      onChange={(e) => canEditProfile && setProfileData({ ...profileData, email: e.target.value })}
                     />
                     <Mail className="h-5 w-5 text-gray-400 absolute left-3 top-2.5" />
                   </div>
@@ -204,20 +217,39 @@ const Profile = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {updating ? 'Updating...' : 'Update Profile'}
-                </button>
-              </div>
-            </form>
+              {!canEditProfile && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <div className="flex">
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800">
+                        Profile View Only
+                      </h3>
+                      <div className="mt-2 text-sm text-blue-700">
+                        <p>Your profile information is managed by your administrator. Contact them if you need to make changes.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {canEditProfile && (
+                <form onSubmit={handleProfileSubmit}>
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={updating}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {updating ? 'Updating...' : 'Update Profile'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
 
-          {activeTab === 'password' && (
+          {activeTab === 'password' && canEditProfile && (
             <form onSubmit={handlePasswordSubmit} className="space-y-6">
               <div className="space-y-4">
                 <div>

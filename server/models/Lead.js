@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
 const leadSchema = new mongoose.Schema({
+  // Custom Lead ID
+  leadId: {
+    type: String,
+    unique: true,
+    sparse: true // Allow multiple documents without leadId during creation
+  },
+  
   // Basic Information
   name: {
     type: String,
@@ -22,9 +29,10 @@ const leadSchema = new mongoose.Schema({
         if (!v) return true; // allow missing/undefined
         const str = String(v).trim();
         if (str === '') return true; // treat empty as not provided
-        return /^[\d+\-()\s]{5,20}$/.test(str);
+        // Validate +1 followed by exactly 10 digits
+        return /^\+1\d{10}$/.test(str);
       },
-      message: 'Please enter a valid phone number'
+      message: 'Phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'
     }
   },
   alternatePhone: {
@@ -35,9 +43,10 @@ const leadSchema = new mongoose.Schema({
         if (!v) return true; // allow missing/undefined
         const str = String(v).trim();
         if (str === '') return true; // treat empty as not provided
-        return /^[\d+\-()\s]{5,20}$/.test(str);
+        // Validate +1 followed by exactly 10 digits
+        return /^\+1\d{10}$/.test(str);
       },
-      message: 'Please enter a valid alternate phone number'
+      message: 'Alternate phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'
     }
   },
   
@@ -68,6 +77,17 @@ const leadSchema = new mongoose.Schema({
   monthlyDebtPayment: {
     type: Number,
     min: [0, 'Monthly debt payment cannot be negative']
+  },
+  creditScore: {
+    type: Number,
+    min: [0, 'Credit score cannot be negative'],
+    max: [900, 'Credit score cannot exceed 900'],
+    validate: {
+      validator: function(v) {
+        return !v || (Number.isInteger(v) && v >= 0 && v <= 900);
+      },
+      message: 'Credit score must be a whole number between 0 and 900'
+    }
   },
   creditScoreRange: {
     type: String,
@@ -236,6 +256,23 @@ const leadSchema = new mongoose.Schema({
     ref: 'User'
   },
   
+  // Assignment Information
+  assignedTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  assignedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  assignedAt: {
+    type: Date
+  },
+  assignmentNotes: {
+    type: String,
+    maxlength: [500, 'Assignment notes cannot exceed 500 characters']
+  },
+  
   // Priority (derived from category)
   priority: {
     type: String,
@@ -265,14 +302,47 @@ const leadSchema = new mongoose.Schema({
 });
 
 // Indexes for better performance
+leadSchema.index({ leadId: 1 }, { unique: true });
 leadSchema.index({ createdBy: 1 });
+leadSchema.index({ assignedTo: 1 });
+leadSchema.index({ assignedBy: 1 });
 leadSchema.index({ status: 1 });
 leadSchema.index({ category: 1 });
 leadSchema.index({ createdAt: -1 });
 leadSchema.index({ followUpDate: 1 });
 
-// Pre-save middleware to calculate completion percentage and category
-leadSchema.pre('save', function(next) {
+// Function to generate unique lead ID
+const generateLeadId = async function() {
+  const currentDate = new Date();
+  const year = currentDate.getFullYear().toString().slice(-2);
+  const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+  
+  // Get count of leads created today
+  const startOfDay = new Date(currentDate);
+  startOfDay.setHours(0, 0, 0, 0);
+  
+  const endOfDay = new Date(currentDate);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const todayLeadsCount = await this.constructor.countDocuments({
+    createdAt: { $gte: startOfDay, $lte: endOfDay }
+  });
+  
+  const sequence = String(todayLeadsCount + 1).padStart(4, '0');
+  return `LEAD${year}${month}${sequence}`;
+};
+
+// Pre-save middleware to generate leadId and calculate completion percentage and category
+leadSchema.pre('save', async function(next) {
+  // Generate leadId for new documents
+  if (this.isNew && !this.leadId) {
+    try {
+      this.leadId = await generateLeadId.call(this);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   const requiredFields = [
     'name', 'email', 'phone', 'totalDebtAmount', 'debtCategory', 
     'numberOfCreditors', 'monthlyDebtPayment', 'creditScoreRange'
@@ -306,6 +376,11 @@ leadSchema.pre('save', function(next) {
 
   next();
 });
+
+// Static method to find lead by leadId
+leadSchema.statics.findByLeadId = function(leadId) {
+  return this.findOne({ leadId: leadId });
+};
 
 // Static method to get statistics
 leadSchema.statics.getStatistics = async function() {

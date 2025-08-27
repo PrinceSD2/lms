@@ -83,7 +83,11 @@ function App() {
                   </ProtectedRoute>
                 } />
                 
-                <Route path="profile" element={<Profile />} />
+                <Route path="profile" element={
+                  <ProtectedRoute roles={['admin', 'superadmin']}>
+                    <Profile />
+                  </ProtectedRoute>
+                } />
               </Route>
               
               {/* Catch all route */}

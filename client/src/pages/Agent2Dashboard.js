@@ -173,7 +173,7 @@ const Agent2Dashboard = () => {
       
       console.log('Update form data:', updateData);
       console.log('Sending update request with cleaned data:', cleanUpdateData);
-      console.log('Selected lead ID:', selectedLead._id);
+      console.log('Selected lead ID:', selectedLead.leadId);
       
       // Check if we have any data to update
       if (Object.keys(cleanUpdateData).length === 0) {
@@ -181,7 +181,7 @@ const Agent2Dashboard = () => {
         return;
       }
       
-      const response = await axios.put(`/api/leads/${selectedLead._id}`, cleanUpdateData);
+      const response = await axios.put(`/api/leads/${selectedLead.leadId}`, cleanUpdateData);
       console.log('Update response:', response.data);
       
       toast.success('Lead updated successfully!');
@@ -438,16 +438,29 @@ const Agent2Dashboard = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {leads.map((lead) => (
-                <tr key={lead._id} className="hover:bg-gray-50">
+                <tr key={lead.leadId || lead._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">{lead.name}</div>
                       <div className="text-sm text-gray-500">
                         {lead.debtCategory ? `${lead.debtCategory.charAt(0).toUpperCase() + lead.debtCategory.slice(1)} Debt` : 'N/A'}
                       </div>
+                      {lead.leadId && (
+                        <div className="text-xs text-primary-600 font-mono">ID: {lead.leadId}</div>
+                      )}
                       <div className="text-xs text-gray-400">
-                        By: {lead.createdBy?.name}
+                        Created by: {lead.createdBy?.name}
                       </div>
+                      {lead.assignedBy && (
+                        <div className="text-xs text-green-600">
+                          Assigned by: {lead.assignedBy?.name}
+                        </div>
+                      )}
+                      {lead.assignmentNotes && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Note: {lead.assignmentNotes}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -809,7 +822,7 @@ const Agent2Dashboard = () => {
                     await fetchLeads();
                     // Find and update the selected lead with fresh data
                     const updatedLeads = await axios.get(`/api/leads`);
-                    const freshLead = updatedLeads.data?.data?.leads?.find(l => l._id === selectedLead._id);
+                    const freshLead = updatedLeads.data?.data?.leads?.find(l => (l.leadId || l._id) === (selectedLead.leadId || selectedLead._id));
                     if (freshLead) {
                       setSelectedLead(freshLead);
                       console.log('Refreshed lead data:', freshLead);

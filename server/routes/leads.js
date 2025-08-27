@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, query } = require('express-validator');
 const Lead = require('../models/Lead');
+const User = require('../models/User');
 const { protect, authorize } = require('../middleware/auth');
 const handleValidationErrors = require('../middleware/validation');
 
@@ -20,21 +21,25 @@ const createLeadValidation = [
     .custom((value) => {
       if (!value || value.trim() === '') return true; // allow empty or missing
       if (typeof value !== 'string') throw new Error('Phone must be a string');
-      if (value.length < 5 || value.length > 20) throw new Error('Phone must be 5-20 characters');
-      if (!/^[\d+\-()\s]+$/.test(value)) throw new Error('Phone can only contain numbers, spaces, +, -, (, )');
+      // Validate +1 followed by exactly 10 digits
+      if (!/^\+1\d{10}$/.test(value.trim())) {
+        throw new Error('Phone number must be in format +1 followed by 10 digits (e.g., +12345678901)');
+      }
       return true;
     })
-    .withMessage('Phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
+    .withMessage('Phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'),
   body('alternatePhone')
     .optional({ nullable: true, checkFalsy: true })
     .custom((value) => {
       if (!value || value.trim() === '') return true; // allow empty or missing
       if (typeof value !== 'string') throw new Error('Alternate phone must be a string');
-      if (value.length < 5 || value.length > 20) throw new Error('Alternate phone must be 5-20 characters');
-      if (!/^[\d+\-()\s]+$/.test(value)) throw new Error('Alternate phone can only contain numbers, spaces, +, -, (, )');
+      // Validate +1 followed by exactly 10 digits
+      if (!/^\+1\d{10}$/.test(value.trim())) {
+        throw new Error('Alternate phone number must be in format +1 followed by 10 digits (e.g., +12345678901)');
+      }
       return true;
     })
-    .withMessage('Alternate phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
+    .withMessage('Alternate phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'),
   body('debtCategory')
     .optional({ nullable: true, checkFalsy: true })
     .isIn(['secured', 'unsecured'])
@@ -55,6 +60,10 @@ const createLeadValidation = [
     .optional({ nullable: true, checkFalsy: true })
     .isNumeric()
     .withMessage('Monthly debt payment must be a number'),
+  body('creditScore')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 0, max: 900 })
+    .withMessage('Credit score must be a whole number between 0 and 900'),
   body('creditScoreRange')
     .optional({ nullable: true, checkFalsy: true })
     .isIn(['300-549', '550-649', '650-699', '700-749', '750-850'])
@@ -111,6 +120,96 @@ const createLeadValidation = [
 ];
 
 const updateLeadValidation = [
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Name must be between 2 and 100 characters'),
+  body('email')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('Please enter a valid email'),
+  body('phone')
+    .optional()
+    .custom((value) => {
+      if (!value || value.trim() === '') return true; // allow empty or missing
+      if (typeof value !== 'string') throw new Error('Phone must be a string');
+      if (value.length < 5 || value.length > 20) throw new Error('Phone must be 5-20 characters');
+      if (!/^[\d+\-()\s]+$/.test(value)) throw new Error('Phone can only contain numbers, spaces, +, -, (, )');
+      return true;
+    })
+    .withMessage('Phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
+  body('alternatePhone')
+    .optional({ nullable: true, checkFalsy: true })
+    .custom((value) => {
+      if (!value || value.trim() === '') return true; // allow empty or missing
+      if (typeof value !== 'string') throw new Error('Alternate phone must be a string');
+      if (value.length < 5 || value.length > 20) throw new Error('Alternate phone must be 5-20 characters');
+      if (!/^[\d+\-()\s]+$/.test(value)) throw new Error('Alternate phone can only contain numbers, spaces, +, -, (, )');
+      return true;
+    })
+    .withMessage('Alternate phone must be 5-20 characters and contain only numbers, spaces, +, -, (, )'),
+  body('debtCategory')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['secured', 'unsecured'])
+    .withMessage('Debt category must be secured or unsecured'),
+  body('debtTypes')
+    .optional({ nullable: true, checkFalsy: true })
+    .isArray()
+    .withMessage('Debt types must be an array'),
+  body('totalDebtAmount')
+    .optional({ nullable: true, checkFalsy: true })
+    .isNumeric()
+    .withMessage('Total debt amount must be a number'),
+  body('numberOfCreditors')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 0 })
+    .withMessage('Number of creditors must be a non-negative integer'),
+  body('monthlyDebtPayment')
+    .optional({ nullable: true, checkFalsy: true })
+    .isNumeric()
+    .withMessage('Monthly debt payment must be a number'),
+  body('creditScore')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 0, max: 900 })
+    .withMessage('Credit score must be a whole number between 0 and 900'),
+  body('creditScoreRange')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['300-549', '550-649', '650-699', '700-749', '750-850'])
+    .withMessage('Credit score range must be 300-549, 550-649, 650-699, 700-749, or 750-850'),
+  body('address')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 200 })
+    .withMessage('Address cannot exceed 200 characters'),
+  body('city')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+  body('state')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 50 })
+    .withMessage('State cannot exceed 50 characters'),
+  body('zipcode')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 20 })
+    .withMessage('Zipcode cannot exceed 20 characters'),
+  body('notes')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 2000 })
+    .withMessage('Notes cannot exceed 2000 characters'),
+  body('company')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ max: 100 })
+    .withMessage('Company name cannot exceed 100 characters'),
+  body('source')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn([
+      'Personal Debt', 'Secured Debt', 'Unsecured Debt', 'Revolving Debt', 
+      'Installment Debt', 'Credit Card Debt', 'Mortgage Debt', 'Student Loans',
+      'Auto Loans', 'Personal Loans', 'Medical Debt', 'Home Equity Loans (HELOCs)',
+      'Payday Loans', 'Buy Now, Pay Later (BNPL) loans'
+    ])
+    .withMessage('Invalid debt type'),
   body('status')
     .optional()
     .isIn(['new', 'interested', 'not-interested', 'successful', 'follow-up'])
@@ -275,24 +374,35 @@ router.get('/', protect, [
       ];
     }
 
-    // Role-based filtering (Agent1 can only see their own leads)
+    // Role-based filtering
     if (req.user.role === 'agent1') {
       filter.createdBy = req.user._id;
       filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
+      console.log('Agent1 filter applied:', filter);
     } else if (req.user.role === 'agent2') {
+      // Agent2 can only see leads assigned to them
+      filter.assignedTo = req.user._id;
       filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
+      console.log('Agent2 filter applied:', filter);
     }
+
+    console.log('Final filter:', filter);
+    console.log('User role:', req.user.role, 'User ID:', req.user._id);
 
     // Get leads with pagination
     const leads = await Lead.find(filter)
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
+      .populate('assignedTo', 'name email')
+      .populate('assignedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
     // Get total count for pagination
     const total = await Lead.countDocuments(filter);
+
+    console.log('Found leads:', leads.length, 'Total count:', total);
 
     res.status(200).json({
       success: true,
@@ -317,14 +427,50 @@ router.get('/', protect, [
   }
 });
 
+// @desc    Get available Agent2 users in the same organization
+// @route   GET /api/leads/available-agents
+// @access  Private (Agent1 only)
+router.get('/available-agents', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'agent1') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Agent1 can view available agents'
+      });
+    }
+
+    // Get Agent2 users in the same organization
+    const availableAgents = await User.find({
+      role: 'agent2',
+      organization: req.user.organization,
+      isActive: true
+    }).select('name email');
+
+    res.status(200).json({
+      success: true,
+      data: { agents: availableAgents }
+    });
+
+  } catch (error) {
+    console.error('Get available agents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching available agents',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 // @desc    Get single lead
 // @route   GET /api/leads/:id
 // @access  Private
 router.get('/:id', protect, async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id)
+    const lead = await Lead.findByLeadId(req.params.id)
       .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email');
+      .populate('updatedBy', 'name email')
+      .populate('assignedTo', 'name email')
+      .populate('assignedBy', 'name email');
 
     if (!lead) {
       return res.status(404).json({
@@ -424,22 +570,14 @@ router.post('/', protect, createLeadValidation, handleValidationErrors, async (r
 
 // @desc    Update lead status
 // @route   PUT /api/leads/:id
-// @access  Private (Agent2, Admin)
+// @access  Private (Agent1 for own leads, Agent2, Admin)
 router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async (req, res) => {
   try {
     console.log('Update request body:', req.body);
     console.log('Update request user:', req.user ? req.user.role : 'No user');
     console.log('Update request user ID:', req.user ? req.user._id : 'No user ID');
     
-    // Check if user has permission (agent2 or admin)
-    if (req.user && !['agent2', 'admin'].includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: `User role ${req.user.role} is not authorized to update leads`
-      });
-    }
-    
-    const lead = await Lead.findById(req.params.id);
+    const lead = await Lead.findByLeadId(req.params.id);
 
     if (!lead) {
       return res.status(404).json({
@@ -448,16 +586,55 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       });
     }
 
-    console.log('Found lead:', lead._id);
+    console.log('Found lead:', lead.leadId);
+    console.log('Lead createdBy:', lead.createdBy);
+    console.log('Current user role:', req.user.role);
+    console.log('Current user ID:', req.user._id);
 
-    // Update fields
-    const updateFields = [
-      'status', 'leadStatus', 'contactStatus', 'qualificationOutcome', 
-      'callDisposition', 'engagementOutcome', 'disqualification',
-      'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue',
-      'leadProgressStatus', 'agent2LastAction', 'lastUpdatedBy', 'lastUpdatedAt'
-    ];
-    updateFields.forEach(field => {
+    // Check permissions based on user role
+    if (req.user.role === 'agent1') {
+      console.log('User is agent1, checking if they created this lead...');
+      // Agent1 can only update their own leads
+      if (lead.createdBy.toString() !== req.user._id.toString()) {
+        console.log('Agent1 trying to update lead they did not create');
+        return res.status(403).json({
+          success: false,
+          message: 'Agent1 can only update leads they created'
+        });
+      }
+      console.log('Agent1 authorized to update their own lead');
+    } else if (['agent2', 'admin', 'superadmin'].includes(req.user.role)) {
+      console.log('User is agent2/admin/superadmin, authorized to update leads');
+    } else {
+      console.log('User role not authorized:', req.user.role);
+      return res.status(403).json({
+        success: false,
+        message: `User role ${req.user.role} is not authorized to update leads`
+      });
+    }
+
+    // Define which fields each role can update
+    let allowedFields = [];
+    
+    if (req.user.role === 'agent1') {
+      // Agent1 can update basic lead information but not status fields
+      allowedFields = [
+        'name', 'email', 'phone', 'alternatePhone', 'debtCategory', 'debtTypes',
+        'totalDebtAmount', 'numberOfCreditors', 'monthlyDebtPayment', 'creditScore', 'creditScoreRange',
+        'address', 'city', 'state', 'zipcode', 'notes', 'company', 'source'
+      ];
+    } else if (['agent2', 'admin', 'superadmin'].includes(req.user.role)) {
+      // Agent2 and above can update status fields
+      allowedFields = [
+        'status', 'leadStatus', 'contactStatus', 'qualificationOutcome', 
+        'callDisposition', 'engagementOutcome', 'disqualification',
+        'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue',
+        'leadProgressStatus', 'agent2LastAction', 'lastUpdatedBy', 'lastUpdatedAt'
+      ];
+    }
+
+    // Update allowed fields
+    allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
         console.log(`Updating ${field} to:`, req.body[field]);
         lead[field] = req.body[field];
@@ -516,7 +693,7 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
 // @access  Private (Admin only)
 router.delete('/:id', protect, authorize('admin'), async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id);
+    const lead = await Lead.findByLeadId(req.params.id);
 
     if (!lead) {
       return res.status(404).json({
@@ -525,7 +702,7 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
       });
     }
 
-    await Lead.findByIdAndDelete(req.params.id);
+    await Lead.findOneAndDelete({ leadId: req.params.id });
 
     // Emit real-time update
     req.io.emit('leadDeleted', {
@@ -552,6 +729,207 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting lead',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Assign lead to Agent2
+// @route   POST /api/leads/:id/assign
+// @access  Private (Agent1 only)
+router.post('/:id/assign', protect, [
+  body('assignedTo')
+    .isMongoId()
+    .withMessage('Valid Agent ID is required'),
+  body('assignmentNotes')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Assignment notes cannot exceed 500 characters')
+], handleValidationErrors, async (req, res) => {
+  try {
+    if (req.user.role !== 'agent1') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Agent1 can assign leads'
+      });
+    }
+
+    const { assignedTo, assignmentNotes } = req.body;
+
+    // Find the lead
+    const lead = await Lead.findByLeadId(req.params.id);
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found'
+      });
+    }
+
+    // Check if Agent1 owns this lead
+    if (lead.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only assign leads you created'
+      });
+    }
+
+    // Check if lead is already assigned
+    if (lead.assignedTo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lead is already assigned'
+      });
+    }
+
+    // Verify the assigned agent exists and is Agent2 in same organization
+    const assignedAgent = await User.findById(assignedTo);
+    if (!assignedAgent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Assigned agent not found'
+      });
+    }
+
+    if (assignedAgent.role !== 'agent2') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only assign to Agent2 users'
+      });
+    }
+
+    if (assignedAgent.organization.toString() !== req.user.organization.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only assign to agents in the same organization'
+      });
+    }
+
+    // Assign the lead
+    lead.assignedTo = assignedTo;
+    lead.assignedBy = req.user._id;
+    lead.assignedAt = new Date();
+    lead.assignmentNotes = assignmentNotes || '';
+    lead.updatedBy = req.user._id;
+
+    await lead.save();
+
+    // Populate the updated lead
+    await lead.populate(['createdBy updatedBy assignedTo assignedBy', 'name email']);
+
+    // Emit real-time update
+    if (req.io) {
+      req.io.emit('leadAssigned', {
+        lead: lead,
+        assignedBy: req.user.name,
+        assignedTo: assignedAgent.name
+      });
+      // Emit to specific rooms
+      req.io.to('admin').emit('leadAssigned', {
+        lead: lead,
+        assignedBy: req.user.name,
+        assignedTo: assignedAgent.name
+      });
+      req.io.to(`user_${assignedTo}`).emit('leadAssigned', {
+        lead: lead,
+        assignedBy: req.user.name,
+        assignedTo: assignedAgent.name
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lead assigned successfully',
+      data: { lead }
+    });
+
+  } catch (error) {
+    console.error('Assign lead error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning lead',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Unassign lead (remove assignment)
+// @route   POST /api/leads/:id/unassign
+// @access  Private (Agent1 only - for their own leads)
+router.post('/:id/unassign', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'agent1') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Agent1 can unassign leads'
+      });
+    }
+
+    const lead = await Lead.findByLeadId(req.params.id);
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found'
+      });
+    }
+
+    // Check if Agent1 owns this lead
+    if (lead.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only unassign leads you created'
+      });
+    }
+
+    if (!lead.assignedTo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lead is not assigned'
+      });
+    }
+
+    // Store the previous assignment info for notification
+    const previousAssignedTo = lead.assignedTo;
+
+    // Unassign the lead
+    lead.assignedTo = null;
+    lead.assignedBy = null;
+    lead.assignedAt = null;
+    lead.assignmentNotes = '';
+    lead.updatedBy = req.user._id;
+
+    await lead.save();
+
+    // Populate the updated lead
+    await lead.populate(['createdBy updatedBy', 'name email']);
+
+    // Emit real-time update
+    if (req.io) {
+      req.io.emit('leadUnassigned', {
+        lead: lead,
+        unassignedBy: req.user.name
+      });
+      // Emit to specific rooms
+      req.io.to('admin').emit('leadUnassigned', {
+        lead: lead,
+        unassignedBy: req.user.name
+      });
+      req.io.to(`user_${previousAssignedTo}`).emit('leadUnassigned', {
+        lead: lead,
+        unassignedBy: req.user.name
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lead unassigned successfully',
+      data: { lead }
+    });
+
+  } catch (error) {
+    console.error('Unassign lead error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error unassigning lead',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

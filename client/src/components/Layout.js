@@ -28,9 +28,12 @@ const Layout = () => {
 
   // Navigation items based on user role
   const getNavItems = () => {
-    const baseItems = [
-      { name: 'Profile', href: '/profile', icon: User }
-    ];
+    const baseItems = [];
+
+    // Only add Profile for admin and superadmin roles
+    if (['admin', 'superadmin'].includes(user.role)) {
+      baseItems.push({ name: 'Profile', href: '/profile', icon: User });
+    }
 
     if (user.role === 'superadmin') {
       return [
@@ -46,13 +49,11 @@ const Layout = () => {
       ];
     } else if (user.role === 'agent2') {
       return [
-        { name: 'Leads', href: '/leads', icon: Users },
-        ...baseItems
+        { name: 'Leads', href: '/leads', icon: Users }
       ];
     } else {
       return [
-        { name: 'Dashboard', href: '/dashboard', icon: Home },
-        ...baseItems
+        { name: 'Dashboard', href: '/dashboard', icon: Home }
       ];
     }
   };
