@@ -9,6 +9,8 @@ const AgentManagement = () => {
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedAgents, setSelectedAgents] = useState([]);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchAgents();
@@ -69,6 +71,63 @@ const AgentManagement = () => {
       const message = error.response?.data?.message || 'Error deleting agent';
       toast.error(message);
       console.error('Delete agent error:', error);
+    }
+  };
+
+  // Bulk deletion functions
+  const handleSelectAgent = (agentId) => {
+    setSelectedAgents(prev => 
+      prev.includes(agentId)
+        ? prev.filter(id => id !== agentId)
+        : [...prev, agentId]
+    );
+  };
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      // Select all agent IDs
+      setSelectedAgents(agents.map(agent => agent._id));
+    } else {
+      // Deselect all
+      setSelectedAgents([]);
+    }
+  };
+
+  const deleteSelectedAgents = async () => {
+    if (selectedAgents.length === 0) {
+      toast.error('Please select agents to delete');
+      return;
+    }
+
+    const selectedAgentNames = agents
+      .filter(agent => selectedAgents.includes(agent._id))
+      .map(agent => agent.name);
+
+    const confirmMessage = `Are you sure you want to delete ${selectedAgents.length} agent(s)?\n\n${selectedAgentNames.join(', ')}\n\nThis action cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // Delete agents in parallel for better performance
+      const deletePromises = selectedAgents.map(agentId =>
+        axios.delete(`/api/auth/agents/${agentId}`)
+      );
+
+      await Promise.all(deletePromises);
+
+      // Remove deleted agents from the list
+      setAgents(prev => prev.filter(agent => !selectedAgents.includes(agent._id)));
+      setSelectedAgents([]);
+      toast.success(`Successfully deleted ${selectedAgents.length} agent(s)`);
+    } catch (error) {
+      const message = error.response?.data?.message || 'Error deleting selected agents';
+      toast.error(message);
+      console.error('Bulk delete error:', error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -147,10 +206,46 @@ const AgentManagement = () => {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="space-y-4">
+            {/* Bulk Actions */}
+            {selectedAgents.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-blue-900">
+                      {selectedAgents.length} agent{selectedAgents.length > 1 ? 's' : ''} selected
+                    </span>
+                    <button
+                      onClick={() => setSelectedAgents([])}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                  <button
+                    onClick={deleteSelectedAgents}
+                    disabled={isDeleting}
+                    className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>{isDeleting ? 'Deleting...' : 'Delete Selected'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">
+                    <input
+                      type="checkbox"
+                      checked={agents.length > 0 && selectedAgents.length === agents.length}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                  </th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Agent</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Role</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Status</th>
@@ -162,6 +257,14 @@ const AgentManagement = () => {
               <tbody>
                 {agents.map((agent) => (
                   <tr key={agent._id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-4 px-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedAgents.includes(agent._id)}
+                        onChange={() => handleSelectAgent(agent._id)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                    </td>
                     <td className="py-4 px-4">
                       <div>
                         <div className="font-medium text-gray-900">{agent.name}</div>
@@ -232,6 +335,7 @@ const AgentManagement = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

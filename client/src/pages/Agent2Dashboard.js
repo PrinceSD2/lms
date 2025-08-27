@@ -60,6 +60,7 @@ const Agent2Dashboard = () => {
     if (amountStr.length <= 3) return '$***';
     return `$${amountStr.substring(0, 1)}***`;
   };
+
   
   const [filters, setFilters] = useState({
     status: '',
@@ -276,13 +277,24 @@ const Agent2Dashboard = () => {
   };
 
   const getLeadStats = () => {
-    const total = leads.length;
-    const newLeads = leads.filter(lead => lead.status === 'new').length;
-    const interested = leads.filter(lead => lead.status === 'interested').length;
-    const successful = leads.filter(lead => lead.status === 'successful').length;
-    const followUp = leads.filter(lead => lead.status === 'follow-up').length;
+    // Agent2 sees only today's assigned leads - daily reset
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    const todaysLeads = leads.filter(lead => {
+      const leadDate = new Date(lead.assignedAt || lead.createdAt);
+      return leadDate >= todayStart && leadDate <= todayEnd;
+    });
+    
+    const total = todaysLeads.length;
+    const newLeads = todaysLeads.filter(lead => lead.status === 'new').length;
+    const interested = todaysLeads.filter(lead => lead.status === 'interested').length;
+    const successful = todaysLeads.filter(lead => lead.status === 'successful').length;
+    const followUp = todaysLeads.filter(lead => lead.status === 'follow-up').length;
 
-    return { total, newLeads, interested, successful, followUp };
+    return { total, newLeads, interested, successful, followUp, todaysLeads };
   };
 
   const stats = getLeadStats();
@@ -298,6 +310,17 @@ const Agent2Dashboard = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Lead Management</h1>
           <p className="text-gray-600">Follow up on leads and update their status</p>
+        </div>
+      </div>
+
+      {/* Today's Assigned Leads Summary for Agent2 */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Today's Assigned Leads</h3>
+          <p className="text-sm text-gray-600">Agent2 views only today's assigned leads - Daily data reset for agents</p>
+          <div className="mt-4 text-2xl font-bold text-green-600">
+            {stats.todaysLeads?.length || 0} leads assigned today
+          </div>
         </div>
       </div>
 
@@ -437,7 +460,7 @@ const Agent2Dashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {leads.map((lead) => (
+              {stats.todaysLeads?.map((lead) => (
                 <tr key={lead.leadId || lead._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>

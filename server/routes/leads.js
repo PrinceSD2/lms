@@ -956,6 +956,14 @@ router.get('/dashboard/stats', protect, async (req, res) => {
     let stats;
     if (['admin', 'superadmin'].includes(role)) {
       stats = await Lead.getStatistics();
+      
+      // Get active agents count for admin
+      const User = require('../models/User');
+      const activeAgents = await User.countDocuments({ 
+        role: { $in: ['agent1', 'agent2'] },
+        isActive: { $ne: false } // Count users who are not explicitly inactive
+      });
+      stats.activeAgents = activeAgents;
     } else {
       // Get filtered stats for agents
       const [total, newLeads, qualified, followUp, converted, closed] = await Promise.all([
@@ -1030,41 +1038,6 @@ router.get('/dashboard/stats', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching statistics',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
-    });
-  }
-});
-
-// @desc    Get dashboard statistics for admin
-// @route   GET /api/leads/dashboard/stats
-// @access  Private (Admin)
-router.get('/dashboard/stats', protect, authorize('admin'), async (req, res) => {
-  try {
-    const stats = await Lead.getStatistics();
-    
-    // Get today's leads count
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayLeads = await Lead.countDocuments({
-      createdAt: { $gte: today }
-    });
-
-    const response = {
-      ...stats,
-      todayLeads,
-      lastUpdated: new Date().toISOString()
-    };
-
-    res.status(200).json({
-      success: true,
-      data: response
-    });
-
-  } catch (error) {
-    console.error('Get dashboard stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching dashboard statistics',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

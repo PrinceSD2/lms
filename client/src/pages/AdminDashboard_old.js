@@ -5,11 +5,12 @@ import {
   Users, 
   Calendar,
   Target,
+  Activity,
   Clock,
   CheckCircle,
   AlertCircle,
-  XCircle,
-  RefreshCw
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -26,7 +27,7 @@ const AdminDashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [showLeadsSection, setShowLeadsSection] = useState(false);
 
-  // Date filtering state - ONLY FOR ADMIN
+  // Date filtering state
   const [dateFilter, setDateFilter] = useState({
     startDate: '',
     endDate: '',
@@ -36,6 +37,8 @@ const AdminDashboard = () => {
   // Lead update modal states - REMOVED (Admin is now read-only)
   const [selectedLead, setSelectedLead] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
+
+  // Utility functions to mask sensitive data
   const maskEmail = (email) => {
     if (!email) return '—';
     const [username, domain] = email.split('@');
@@ -98,6 +101,12 @@ const AdminDashboard = () => {
       endDate
     });
   };
+  
+  const [filters, setFilters] = useState({
+    status: '',
+    category: '',
+    search: ''
+  });
 
   useEffect(() => {
     fetchStats();
@@ -109,28 +118,37 @@ const AdminDashboard = () => {
     const interval = setInterval(() => {
       fetchStats(true);
       if (showLeadsSection) {
-        fetchLeads(true);
+        fetchLeads();
       }
-      setLastUpdated(new Date());
     }, 10000);
 
-    return () => clearInterval(interval);
-  }, [showLeadsSection]);
+    // Listen for real-time updates
+    const handleStatsRefresh = (event) => {
+      if (event.detail) {
+        setStats(event.detail);
+        setLastUpdated(new Date());
+      } else {
+        fetchStats(true);
+      }
+    };
 
-  useEffect(() => {
+    window.addEventListener('refreshStats', handleStatsRefresh);
+    window.addEventListener('refreshLeads', () => {
+      fetchStats(true);
+      if (showLeadsSection) fetchLeads();
+    });
+
     // Socket.IO event listeners for real-time updates
     if (socket) {
-      console.log('Admin Dashboard: Setting up socket listeners');
-      
       const handleLeadUpdated = (data) => {
         console.log('Lead updated via socket:', data);
         toast.success(`Lead updated by ${data.updatedBy}`, {
-          duration: 2000,
+          duration: 3000,
           icon: '🔄'
         });
         fetchStats(true);
         if (showLeadsSection) {
-          fetchLeads(true);
+          fetchLeads();
         }
         setLastUpdated(new Date());
       };
@@ -138,12 +156,12 @@ const AdminDashboard = () => {
       const handleLeadCreated = (data) => {
         console.log('New lead created via socket:', data);
         toast.success(`New lead created by ${data.createdBy}`, {
-          duration: 2000,
+          duration: 3000,
           icon: '✅'
         });
         fetchStats(true);
         if (showLeadsSection) {
-          fetchLeads(true);
+          fetchLeads();
         }
         setLastUpdated(new Date());
       };
@@ -151,12 +169,12 @@ const AdminDashboard = () => {
       const handleLeadDeleted = (data) => {
         console.log('Lead deleted via socket:', data);
         toast.success(`Lead deleted by ${data.deletedBy}`, {
-          duration: 2000,
+          duration: 3000,
           icon: '🗑️'
         });
         fetchStats(true);
         if (showLeadsSection) {
-          fetchLeads(true);
+          fetchLeads();
         }
         setLastUpdated(new Date());
       };
@@ -167,51 +185,66 @@ const AdminDashboard = () => {
 
       // Cleanup socket listeners
       return () => {
+        clearInterval(interval);
+        window.removeEventListener('refreshStats', handleStatsRefresh);
+        window.removeEventListener('refreshLeads', () => {
+          fetchStats(true);
+          if (showLeadsSection) fetchLeads();
+        });
         socket.off('leadUpdated', handleLeadUpdated);
         socket.off('leadCreated', handleLeadCreated);
         socket.off('leadDeleted', handleLeadDeleted);
       };
     }
-  }, [socket, showLeadsSection]);
-
-  const fetchStats = async (silent = false) => {
-    if (!silent) {
-      setRefreshing(true);
-    }
     
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('refreshStats', handleStatsRefresh);
+      window.removeEventListener('refreshLeads', () => {
+        fetchStats(true);
+        if (showLeadsSection) fetchLeads();
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLeadsSection, filters, socket]);
+
+  const fetchStats = async (isRefresh = false) => {
     try {
-      console.log('Admin Dashboard: Fetching stats...');
+      if (isRefresh) setRefreshing(true);
+      
       const response = await axios.get('/api/leads/dashboard/stats');
-      console.log('Stats response:', response.data);
-      // Handle the nested response structure
-      const statsData = response.data?.data || response.data;
-      setStats(statsData);
+      const statsData = response.data?.data;
+      setStats(statsData || {});
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching stats:', error);
-      if (!silent) {
-        toast.error('Failed to fetch dashboard stats');
+      if (!isRefresh) {
+        toast.error('Failed to fetch dashboard statistics');
       }
+      setStats({}); // Set empty object on error
     } finally {
-      if (!silent) {
-        setRefreshing(false);
-        setLoading(false);
-      }
+      setLoading(false);
+      if (isRefresh) setRefreshing(false);
     }
   };
 
-  const fetchLeads = async (silent = false) => {
+  const fetchLeads = async () => {
     try {
-      console.log('Admin Dashboard: Fetching leads...');
-      const timestamp = new Date().getTime();
-      const response = await axios.get(`/api/leads?page=1&limit=50&_t=${timestamp}`);
+      const params = new URLSearchParams();
+      params.append('page', '1');
+      params.append('limit', '50');
+      
+      if (filters.status) params.append('status', filters.status);
+      if (filters.category) params.append('category', filters.category);
+      if (filters.search) params.append('search', filters.search);
+
+      const response = await axios.get(`/api/leads?${params.toString()}`);
       const leadsData = response.data?.data?.leads;
       setLeads(Array.isArray(leadsData) ? leadsData : []);
     } catch (error) {
       console.error('Error fetching leads:', error);
-      if (!silent) {
-        toast.error('Failed to fetch leads');
-      }
-      setLeads([]);
+      toast.error('Failed to fetch leads');
+      setLeads([]); // Set empty array on error
     }
   };
 
@@ -220,10 +253,10 @@ const AdminDashboard = () => {
     setShowViewModal(true);
   };
 
-  const getCategoryBadge = (category, completionPercentage = 0) => {
+  const getCategoryBadge = (category, completionPercentage) => {
     const badges = {
       hot: 'bg-red-100 text-red-800 border-red-200',
-      warm: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+      warm: 'bg-yellow-100 text-yellow-800 border-yellow-200',
       cold: 'bg-blue-100 text-blue-800 border-blue-200'
     };
 
@@ -246,7 +279,7 @@ const AdminDashboard = () => {
     const icons = {
       new: AlertCircle,
       interested: CheckCircle,
-      'not-interested': XCircle,
+      'not-interested': AlertCircle,
       successful: CheckCircle,
       'follow-up': Clock
     };
@@ -284,7 +317,6 @@ const AdminDashboard = () => {
   }
 
   const conversionRate = parseFloat(stats.conversionRate) || 0;
-  const filteredLeads = getDateFilteredLeads(leads);
 
   return (
     <div className="space-y-6">
@@ -301,7 +333,7 @@ const AdminDashboard = () => {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
@@ -309,54 +341,195 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total Leads */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-blue-100">
-              <BarChart3 className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-sm font-medium text-gray-600">Total Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalLeads}</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.totalLeads || 0}</p>
+              <div className="flex items-center mt-2">
+                <TrendingUp className="h-4 w-4 text-green-500" />
+                <span className="text-sm text-green-600 ml-1">
+                  +{stats.todayLeads || 0} today
+                </span>
+              </div>
+            </div>
+            <div className="p-3 rounded-full bg-blue-100">
+              <Users className="h-8 w-8 text-blue-600" />
             </div>
           </div>
         </div>
 
+        {/* Conversion Rate */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-green-100">
-              <TrendingUp className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Hot Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.hotLeads}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-yellow-100">
-              <Target className="h-6 w-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-sm font-medium text-gray-600">Conversion Rate</p>
-              <p className="text-2xl font-bold text-gray-900">{conversionRate.toFixed(1)}%</p>
+              <p className="text-3xl font-bold text-gray-900">{conversionRate.toFixed(1)}%</p>
+              <div className="flex items-center mt-2">
+                <Target className="h-4 w-4 text-purple-500" />
+                <span className="text-sm text-gray-600 ml-1">
+                  {stats.successfulLeads || 0} successful
+                </span>
+              </div>
+            </div>
+            <div className="p-3 rounded-full bg-purple-100">
+              <BarChart3 className="h-8 w-8 text-purple-600" />
             </div>
           </div>
         </div>
 
+        {/* Hot Leads */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-purple-100">
-              <Users className="h-6 w-6 text-purple-600" />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Hot Leads</p>
+              <p className="text-3xl font-bold text-red-600">{stats.hotLeads || 0}</p>
+              <div className="flex items-center mt-2">
+                <Activity className="h-4 w-4 text-red-500" />
+                <span className="text-sm text-red-600 ml-1">
+                  High Priority
+                </span>
+              </div>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Agents</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeAgents || 0}</p>
+            <div className="p-3 rounded-full bg-red-100">
+              <TrendingUp className="h-8 w-8 text-red-600" />
             </div>
           </div>
+        </div>
+
+        {/* Today's Follow-ups */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Today's Follow-ups</p>
+              <p className="text-3xl font-bold text-orange-600">{stats.todayFollowUps || 0}</p>
+              <div className="flex items-center mt-2">
+                <Clock className="h-4 w-4 text-orange-500" />
+                <span className="text-sm text-orange-600 ml-1">
+                  Scheduled
+                </span>
+              </div>
+            </div>
+            <div className="p-3 rounded-full bg-orange-100">
+              <Calendar className="h-8 w-8 text-orange-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Lead Category Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Lead Categories */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Lead Categories</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-200">
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-red-500 rounded-full mr-3"></div>
+                <span className="font-medium text-red-800">Hot Leads</span>
+              </div>
+              <span className="text-2xl font-bold text-red-600">{stats.hotLeads || 0}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full mr-3"></div>
+                <span className="font-medium text-yellow-800">Warm Leads</span>
+              </div>
+              <span className="text-2xl font-bold text-yellow-600">{stats.warmLeads || 0}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
+                <span className="font-medium text-blue-800">Cold Leads</span>
+              </div>
+              <span className="text-2xl font-bold text-blue-600">{stats.coldLeads || 0}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Lead Status Breakdown */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Lead Status</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-gray-600 mr-3" />
+                <span className="font-medium text-gray-700">New Leads</span>
+              </div>
+              <span className="text-xl font-bold text-gray-700">
+                {stats.totalLeads - stats.interestedLeads - stats.successfulLeads - stats.followUpLeads || 0}
+              </span>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-green-600 mr-3" />
+                <span className="font-medium text-green-700">Interested</span>
+              </div>
+              <span className="text-xl font-bold text-green-600">{stats.interestedLeads || 0}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-emerald-600 mr-3" />
+                <span className="font-medium text-emerald-700">Successful</span>
+              </div>
+              <span className="text-xl font-bold text-emerald-600">{stats.successfulLeads || 0}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+              <div className="flex items-center">
+                <Clock className="h-5 w-5 text-blue-600 mr-3" />
+                <span className="font-medium text-blue-700">Follow Up</span>
+              </div>
+              <span className="text-xl font-bold text-blue-600">{stats.followUpLeads || 0}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Performance Metrics */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">This Week</h3>
+            <Calendar className="h-5 w-5 text-gray-400" />
+          </div>
+          <p className="text-3xl font-bold text-blue-600">{stats.weekLeads || 0}</p>
+          <p className="text-sm text-gray-600">New leads this week</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">This Month</h3>
+            <BarChart3 className="h-5 w-5 text-gray-400" />
+          </div>
+          <p className="text-3xl font-bold text-green-600">{stats.monthLeads || 0}</p>
+          <p className="text-sm text-gray-600">New leads this month</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Success Rate</h3>
+            <Target className="h-5 w-5 text-gray-400" />
+          </div>
+          <p className="text-3xl font-bold text-purple-600">{conversionRate.toFixed(1)}%</p>
+          <p className="text-sm text-gray-600">Lead to conversion</p>
+        </div>
+      </div>
+
+      {/* Auto-refresh Notice */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex items-center">
+          <RefreshCw className="h-5 w-5 text-blue-600 mr-2" />
+          <p className="text-sm text-blue-800">
+            This dashboard automatically refreshes every 10 seconds to show real-time data.
+          </p>
         </div>
       </div>
 
@@ -376,7 +549,7 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Date Filter Controls - ONLY FOR ADMIN */}
+      {/* Date Filter Controls */}
       {showLeadsSection && (
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex flex-wrap items-center gap-4">
@@ -445,20 +618,74 @@ const AdminDashboard = () => {
               />
             </div>
           </div>
-          
-          <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredLeads.length} of {leads.length} leads
-          </div>
         </div>
       )}
 
       {/* Leads Section */}
       {showLeadsSection && (
         <div className="space-y-6 mb-6">
+          {/* Filters */}
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <div className="relative">
+                  <Search className="h-4 w-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Search leads..."
+                    className="pl-10 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={filters.search}
+                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={filters.status}
+                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                >
+                  <option value="">All Status</option>
+                  <option value="new">New</option>
+                  <option value="interested">Interested</option>
+                  <option value="not-interested">Not Interested</option>
+                  <option value="successful">Successful</option>
+                  <option value="follow-up">Follow Up</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={filters.category}
+                  onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                >
+                  <option value="">All Categories</option>
+                  <option value="hot">Hot</option>
+                  <option value="warm">Warm</option>
+                  <option value="cold">Cold</option>
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={() => setFilters({ status: '', category: '', search: '' })}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors duration-200"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Leads Table */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">All Leads</h3>
-              <p className="text-sm text-gray-600">Comprehensive view of all leads from Agent1 and Agent2</p>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">All Leads ({leads.length})</h3>
             </div>
             
             <div className="overflow-x-auto">
@@ -475,10 +702,13 @@ const AdminDashboard = () => {
                       Category
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Agent1 Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Agent2 Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Management
+                      Debt Amount
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -486,59 +716,87 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredLeads.map((lead) => (
+                  {getDateFilteredLeads(leads).map((lead) => (
                     <tr key={lead.leadId || lead._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900">{lead.name}</div>
                           <div className="text-sm text-gray-500">{lead.company}</div>
-                          {lead.leadId && (
-                            <div className="text-xs text-primary-600 font-mono">ID: {lead.leadId}</div>
-                          )}
+                          <div className="text-xs text-gray-400">
+                            By: {lead.createdBy?.name}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
-                          <div className="text-sm text-gray-500">{maskPhone(lead.phone)}</div>
-                        </div>
+                        <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
+                        <div className="text-sm text-gray-500">{maskPhone(lead.phone)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getCategoryBadge(lead.category, lead.completionPercentage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          {lead.leadProgressStatus ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-                              {lead.leadProgressStatus}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">No status update</span>
-                          )}
-                          {lead.lastUpdatedBy && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              by {lead.lastUpdatedBy}
+                        <div className="text-xs space-y-1">
+                          <div>
+                            <span className="text-gray-600">General:</span>
+                            <span className="ml-1">{getStatusBadge(lead.status)}</span>
+                          </div>
+                          {lead.debtCategory && (
+                            <div>
+                              <span className="text-gray-600">Category:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 capitalize">
+                                {lead.debtCategory}
+                              </span>
                             </div>
                           )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm text-gray-900">
-                            Created by: {lead.createdBy?.name}
-                          </div>
-                          {lead.assignedBy && (
-                            <div className="text-sm text-green-600">
-                              Assigned by: {lead.assignedBy?.name}
+                        <div className="text-xs space-y-1">
+                          {lead.leadStatus && (
+                            <div>
+                              <span className="text-gray-600">Lead:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                {lead.leadStatus}
+                              </span>
                             </div>
+                          )}
+                          {lead.contactStatus && (
+                            <div>
+                              <span className="text-gray-600">Contact:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">
+                                {lead.contactStatus}
+                              </span>
+                            </div>
+                          )}
+                          {lead.qualificationOutcome && (
+                            <div>
+                              <span className="text-gray-600">Qualification:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800">
+                                {lead.qualificationOutcome}
+                              </span>
+                            </div>
+                          )}
+                          {lead.callDisposition && (
+                            <div>
+                              <span className="text-gray-600">Call:</span>
+                              <span className="ml-1 text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800">
+                                {lead.callDisposition}
+                              </span>
+                            </div>
+                          )}
+                          {(!lead.leadStatus && !lead.contactStatus && !lead.qualificationOutcome && !lead.callDisposition) && (
+                            <span className="text-gray-400 text-xs">No Agent2 updates</span>
                           )}
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {lead.totalDebtAmount ? `$${lead.totalDebtAmount.toLocaleString()}` : 'N/A'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
+                        <div className="flex flex-col space-y-1">
                           <button
                             onClick={() => openViewModal(lead)}
-                            className="text-primary-600 hover:text-primary-900 bg-primary-50 hover:bg-primary-100 px-3 py-1 rounded-md transition-colors duration-200"
+                            className="text-blue-600 hover:text-blue-900 text-xs"
                           >
                             View Details
                           </button>
@@ -546,9 +804,9 @@ const AdminDashboard = () => {
                       </td>
                     </tr>
                   ))}
-                  {filteredLeads.length === 0 && (
+                  {leads.length === 0 && (
                     <tr>
-                      <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                         No leads found matching your criteria.
                       </td>
                     </tr>
@@ -740,117 +998,65 @@ const AdminDashboard = () => {
                       )}
                     </div>
                   </div>
-
-                  {/* Agent2 Status Tracking */}
-                  <div className="bg-gradient-to-br from-teal-50 to-teal-100 p-5 rounded-xl border border-teal-200">
-                    <div className="flex items-center mb-4">
-                      <div className="p-2 bg-teal-100 rounded-lg mr-3">
-                        <svg className="h-5 w-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Engagement Outcome:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.engagementOutcome ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                {selectedLead.engagementOutcome}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Disqualification:</span>
+                          <span className="ml-2 text-sm text-gray-900">
+                            {selectedLead.disqualification ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                {selectedLead.disqualification}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not set</span>
+                            )}
+                          </span>
+                        </div>
                       </div>
-                      <h4 className="text-lg font-semibold text-gray-800">Agent2 Actions & Status</h4>
-                    </div>
-                    <div className="space-y-3">
-                      {selectedLead.leadProgressStatus ? (
-                        <div className="bg-white p-3 rounded-lg border border-teal-200">
-                          <div className="flex justify-between items-start">
-                            <span className="text-sm font-medium text-gray-600">Lead Progress Status:</span>
-                            <span className="text-sm bg-teal-100 text-teal-800 px-2 py-1 rounded-full font-medium text-right max-w-xs">
-                              {selectedLead.leadProgressStatus}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-100 p-3 rounded-lg">
-                          <span className="text-sm text-gray-500 italic">No status update from Agent2 yet</span>
-                        </div>
-                      )}
-                      
-                      {selectedLead.lastUpdatedBy && (
-                        <div className="flex justify-between items-start">
-                          <span className="text-sm font-medium text-gray-600">Last Updated By:</span>
-                          <span className="text-sm text-teal-700 text-right font-medium">{selectedLead.lastUpdatedBy}</span>
-                        </div>
-                      )}
-                      
-                      {selectedLead.lastUpdatedAt && (
-                        <div className="flex justify-between items-start">
-                          <span className="text-sm font-medium text-gray-600">Last Updated At:</span>
-                          <span className="text-sm text-gray-900 text-right">
-                            {new Date(selectedLead.lastUpdatedAt).toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {selectedLead.followUpDate && (
-                        <div className="flex justify-between items-start">
-                          <span className="text-sm font-medium text-gray-600">Follow-up Date:</span>
-                          <span className="text-sm text-gray-900 text-right">
-                            {new Date(selectedLead.followUpDate).toLocaleDateString()}
-                            {selectedLead.followUpTime && ` at ${selectedLead.followUpTime}`}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {selectedLead.conversionValue && (
-                        <div className="flex justify-between items-start">
-                          <span className="text-sm font-medium text-gray-600">Conversion Value:</span>
-                          <span className="text-sm text-green-600 text-right font-semibold">
-                            ${selectedLead.conversionValue.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Notes & Comments Section */}
-                {(selectedLead.notes || selectedLead.followUpNotes || selectedLead.assignmentNotes) && (
+                {/* Notes Section */}
+                {(selectedLead.notes || selectedLead.requirements || selectedLead.followUpNotes) && (
                   <div className="mt-6">
-                    <div className="bg-gradient-to-r from-gray-100 to-gray-200 p-4 rounded-xl">
-                      <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                        <svg className="h-5 w-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Notes & Comments
-                      </h4>
-                      
-                      {selectedLead.notes && (
-                        <div className="bg-blue-50 p-4 rounded-lg mb-3 border border-blue-200">
-                          <div className="flex items-center mb-2">
-                            <span className="text-sm font-semibold text-blue-800">Agent1 Notes:</span>
-                          </div>
-                          <p className="text-sm text-gray-900 leading-relaxed">{selectedLead.notes}</p>
-                        </div>
-                      )}
-                      
-                      {selectedLead.assignmentNotes && (
-                        <div className="bg-purple-50 p-4 rounded-lg mb-3 border border-purple-200">
-                          <div className="flex items-center mb-2">
-                            <span className="text-sm font-semibold text-purple-800">Assignment Notes:</span>
-                          </div>
-                          <p className="text-sm text-gray-900 leading-relaxed">{selectedLead.assignmentNotes}</p>
-                        </div>
-                      )}
-                      
-                      {selectedLead.followUpNotes && (
-                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                          <div className="flex items-center mb-2">
-                            <span className="text-sm font-semibold text-green-800">Agent2 Follow-up Notes:</span>
-                          </div>
-                          <p className="text-sm text-gray-900 leading-relaxed">{selectedLead.followUpNotes}</p>
-                        </div>
-                      )}
-                    </div>
+                    <h4 className="text-md font-semibold text-gray-900 mb-3">Notes & Comments</h4>
+                    {selectedLead.notes && (
+                      <div className="bg-blue-50 p-4 rounded-lg mb-3">
+                        <span className="text-sm font-medium text-blue-700 block mb-1">Agent1 Notes:</span>
+                        <p className="text-sm text-gray-900">{selectedLead.notes}</p>
+                      </div>
+                    )}
+                    {selectedLead.requirements && (
+                      <div className="bg-gray-50 p-4 rounded-lg mb-3">
+                        <span className="text-sm font-medium text-gray-600 block mb-1">Requirements:</span>
+                        <p className="text-sm text-gray-900">{selectedLead.requirements}</p>
+                      </div>
+                    )}
+                    {selectedLead.followUpNotes && (
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <span className="text-sm font-medium text-green-700 block mb-1">Agent2 Follow-up Notes:</span>
+                        <p className="text-sm text-gray-900">{selectedLead.followUpNotes}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="bg-gray-50 px-6 py-3 flex justify-end">
+              <div className="bg-gray-50 px-6 py-3 sm:flex sm:flex-row-reverse">
                 <button
                   onClick={() => setShowViewModal(false)}
-                  className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200"
+                  className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:w-auto sm:text-sm"
                 >
                   Close
                 </button>

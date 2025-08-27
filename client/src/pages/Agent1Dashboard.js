@@ -16,8 +16,8 @@ const Agent1Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showAssignModal, setShowAssignModal] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningLead, setAssigningLead] = useState(null);
   const [availableAgents, setAvailableAgents] = useState([]);
   const [assignmentData, setAssignmentData] = useState({
@@ -738,6 +738,24 @@ const Agent1Dashboard = () => {
     );
   };
 
+  // Calculate stats for display - showing today's leads only for agents
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+  
+  const todaysLeads = leads.filter(lead => {
+    const leadDate = new Date(lead.createdAt || lead.dateCreated);
+    return leadDate >= todayStart && leadDate <= todayEnd;
+  });
+  
+  const filteredStats = {
+    totalLeads: todaysLeads.length,
+    hotLeads: todaysLeads.filter(lead => lead.category === 'hot').length,
+    warmLeads: todaysLeads.filter(lead => lead.category === 'warm').length,
+    coldLeads: todaysLeads.filter(lead => lead.category === 'cold').length
+  };
+
   if (loading) {
     return <LoadingSpinner message="Loading dashboard..." />;
   }
@@ -759,6 +777,17 @@ const Agent1Dashboard = () => {
         </button>
       </div>
 
+      {/* Today's Lead Summary for Agent1 */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Today's Lead Activity</h3>
+          <p className="text-sm text-gray-600">Showing leads created today only - Agents see daily data reset</p>
+          <div className="mt-4 text-2xl font-bold text-primary-600">
+            {todaysLeads.length} leads created today
+          </div>
+        </div>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -768,7 +797,7 @@ const Agent1Dashboard = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalLeads}</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredStats.totalLeads}</p>
             </div>
           </div>
         </div>
@@ -780,7 +809,7 @@ const Agent1Dashboard = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Hot Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.hotLeads}</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredStats.hotLeads}</p>
             </div>
           </div>
         </div>
@@ -792,7 +821,7 @@ const Agent1Dashboard = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Warm Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.warmLeads}</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredStats.warmLeads}</p>
             </div>
           </div>
         </div>
@@ -804,7 +833,7 @@ const Agent1Dashboard = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Cold Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.coldLeads}</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredStats.coldLeads}</p>
             </div>
           </div>
         </div>
@@ -853,7 +882,7 @@ const Agent1Dashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {leads.map((lead) => (
+              {todaysLeads.map((lead) => (
                 <tr key={lead.leadId || lead._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
@@ -1361,7 +1390,7 @@ const Agent1Dashboard = () => {
         </div>
       )}
 
-      {/* Edit Lead Modal - Modern Design */}
+      {/* Edit Lead Modal */}
       {showEditModal && editingLead && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
