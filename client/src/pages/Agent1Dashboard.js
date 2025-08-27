@@ -146,6 +146,35 @@ const Agent1Dashboard = () => {
     });
   };
 
+  // Handle phone number input with automatic +1 prefix and validation
+  const handlePhoneInputChange = (e) => {
+    const { name, value } = e.target;
+    // Remove all non-digits
+    let cleanValue = value.replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    if (cleanValue.length > 10) {
+      cleanValue = cleanValue.slice(0, 10);
+    }
+    
+    // Store as +1 + 10 digits for backend, but display only the 10 digits
+    const formattedValue = cleanValue.length > 0 ? `+1${cleanValue}` : '';
+    
+    setFormData(prev => ({
+      ...prev,
+      [name]: formattedValue
+    }));
+  };
+
+  // Display phone number without +1 prefix for user input
+  const getDisplayPhone = (phoneValue) => {
+    if (!phoneValue) return '';
+    if (phoneValue.startsWith('+1')) {
+      return phoneValue.slice(2); // Remove +1 prefix for display
+    }
+    return phoneValue.replace(/\D/g, ''); // Remove non-digits if any
+  };
+
   // Auto-progression functionality - double space to move to next field
   const [lastSpaceTime, setLastSpaceTime] = useState(null);
   const [spaceCount, setSpaceCount] = useState(0);
@@ -197,33 +226,6 @@ const Agent1Dashboard = () => {
     }
   };
 
-  // Handle phone number input with automatic +1 prefix
-  const handlePhoneInputChange = (e) => {
-    const { name, value } = e.target;
-    let cleanValue = value.replace(/\D/g, ''); // Remove all non-digits
-    
-    // Limit to 10 digits
-    if (cleanValue.length > 10) {
-      cleanValue = cleanValue.slice(0, 10);
-    }
-    
-    // Store as +1 + 10 digits for backend
-    const formattedValue = cleanValue.length > 0 ? `+1${cleanValue}` : '';
-    
-    setFormData(prev => ({
-      ...prev,
-      [name]: formattedValue
-    }));
-  };
-
-  // Display phone number without +1 prefix for user input
-  const getDisplayPhone = (phoneValue) => {
-    if (!phoneValue) return '';
-    if (phoneValue.startsWith('+1')) {
-      return phoneValue.slice(2); // Remove +1 prefix for display
-    }
-    return phoneValue.replace(/\D/g, ''); // Remove non-digits if any
-  };
 
   // New: category change (clears selected types)
   const handleDebtCategoryChange = (e) => {
@@ -890,12 +892,15 @@ const Agent1Dashboard = () => {
                   </div>
                 </div>
 
+
+
                 {/* Form Content - Two Column Layout */}
                 <div className="bg-white p-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Left Column - Personal Information */}
-                    <div className="space-y-6">
-                      <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                    
+                    {/* Left Column - Personal & Contact Information */}
+                    <div className="space-y-5">
+                      <div className="border-b border-gray-200 pb-2 mb-4">
                         <h4 className="text-lg font-semibold text-gray-900 flex items-center">
                           <svg className="w-5 h-5 text-primary-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -910,12 +915,12 @@ const Agent1Dashboard = () => {
                         <input
                           type="text"
                           name="name"
+                          required
                           className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
                           value={formData.name}
                           onChange={handleInputChange}
                           onKeyDown={handleKeyDown}
                           placeholder="Enter full name"
-                          required
                         />
                       </div>
 
@@ -971,93 +976,7 @@ const Agent1Dashboard = () => {
                             />
                           </div>
                         </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowForm(false)}
-                      className="text-white hover:text-primary-200 transition-colors"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Form Content - Two Column Layout */}
-                <div className="bg-white p-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    
-                    {/* Left Column - Personal & Contact Information */}
-                    <div className="space-y-5">
-                      <div className="border-b border-gray-200 pb-2 mb-4">
-                        <h4 className="text-lg font-semibold text-gray-900 flex items-center">
-                          <svg className="w-5 h-5 text-primary-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                          Personal Information
-                        </h4>
-                      </div>
-
-                      {/* Name */}
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name *</label>
-                        <input
-                          type="text"
-                          name="name"
-                          required
-                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder="Enter full name"
-                        />
-                      </div>
-
-                      {/* Email */}
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-                        <input
-                          type="email"
-                          name="email"
-                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder="Enter email address"
-                        />
-                      </div>
-
-                      {/* Phone Numbers */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Primary Phone</label>
-                          <input
-                            type="tel"
-                            name="phone"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                            value={formData.phone}
-                            onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                            placeholder="Phone number"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Alternate Phone</label>
-                          <input
-                            type="tel"
-                            name="alternatePhone"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                            value={formData.alternatePhone}
-                            onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                            placeholder="Alternate number"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Address */}
+                      </div>                      {/* Address */}
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Street Address</label>
                         <input
@@ -1363,12 +1282,15 @@ const Agent1Dashboard = () => {
                   </div>
                 </div>
 
+
+
                 {/* Form Content - Two Column Layout */}
                 <div className="bg-white p-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Left Column - Personal Information */}
-                    <div className="space-y-6">
-                      <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                    
+                    {/* Left Column - Personal & Contact Information */}
+                    <div className="space-y-5">
+                      <div className="border-b border-gray-200 pb-2 mb-4">
                         <h4 className="text-lg font-semibold text-gray-900 flex items-center">
                           <svg className="w-5 h-5 text-primary-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -1444,96 +1366,7 @@ const Agent1Dashboard = () => {
                             />
                           </div>
                         </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowEditModal(false);
-                        setEditingLead(null);
-                      }}
-                      className="text-white hover:text-primary-200 transition-colors"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Form Content - Two Column Layout */}
-                <div className="bg-white p-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    
-                    {/* Left Column - Personal & Contact Information */}
-                    <div className="space-y-5">
-                      <div className="border-b border-gray-200 pb-2 mb-4">
-                        <h4 className="text-lg font-semibold text-gray-900 flex items-center">
-                          <svg className="w-5 h-5 text-primary-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                          Personal Information
-                        </h4>
-                      </div>
-
-                      {/* Name */}
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name *</label>
-                        <input
-                          type="text"
-                          name="name"
-                          required
-                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder="Enter full name"
-                        />
-                      </div>
-
-                      {/* Email */}
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-                        <input
-                          type="email"
-                          name="email"
-                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder="Enter email address"
-                        />
-                      </div>
-
-                      {/* Phone Numbers */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Primary Phone</label>
-                          <input
-                            type="tel"
-                            name="phone"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                            value={formData.phone}
-                            onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                            placeholder="Phone number"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Alternate Phone</label>
-                          <input
-                            type="tel"
-                            name="alternatePhone"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                            value={formData.alternatePhone}
-                            onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                            placeholder="Alternate number"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Address */}
+                      </div>                      {/* Address */}
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Street Address</label>
                         <input
