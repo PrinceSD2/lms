@@ -18,28 +18,43 @@ const createLeadValidation = [
     .isEmail()
     .withMessage('Please enter a valid email'),
   body('phone')
+    .optional({ nullable: true, checkFalsy: true })
     .custom((value) => {
       if (!value || value.trim() === '') return true; // allow empty or missing
       if (typeof value !== 'string') throw new Error('Phone must be a string');
-      // Validate +1 followed by exactly 10 digits
-      if (!/^\+1\d{10}$/.test(value.trim())) {
-        throw new Error('Phone number must be in format +1 followed by 10 digits (e.g., +12345678901)');
+      
+      // Clean the phone number (remove spaces, dashes, parentheses)
+      const cleaned = value.replace(/[\s\-\(\)]/g, '');
+      
+      // Allow various formats:
+      // +1234567890 (with +1)
+      // 1234567890 (10 digits)
+      // 234567890 (10 digits without country code)
+      if (!/^(\+1)?\d{10}$/.test(cleaned)) {
+        throw new Error('Phone number must be 10 digits (e.g., 2345678901 or +12345678901)');
       }
       return true;
     })
-    .withMessage('Phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'),
+    .withMessage('Phone number must be 10 digits (e.g., 2345678901 or +12345678901)'),
   body('alternatePhone')
     .optional({ nullable: true, checkFalsy: true })
     .custom((value) => {
       if (!value || value.trim() === '') return true; // allow empty or missing
       if (typeof value !== 'string') throw new Error('Alternate phone must be a string');
-      // Validate +1 followed by exactly 10 digits
-      if (!/^\+1\d{10}$/.test(value.trim())) {
-        throw new Error('Alternate phone number must be in format +1 followed by 10 digits (e.g., +12345678901)');
+      
+      // Clean the phone number (remove spaces, dashes, parentheses)
+      const cleaned = value.replace(/[\s\-\(\)]/g, '');
+      
+      // Allow various formats:
+      // +1234567890 (with +1)
+      // 1234567890 (10 digits)
+      // 234567890 (10 digits without country code)
+      if (!/^(\+1)?\d{10}$/.test(cleaned)) {
+        throw new Error('Alternate phone number must be 10 digits (e.g., 2345678901 or +12345678901)');
       }
       return true;
     })
-    .withMessage('Alternate phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'),
+    .withMessage('Alternate phone number must be 10 digits (e.g., 2345678901 or +12345678901)'),
   body('debtCategory')
     .optional({ nullable: true, checkFalsy: true })
     .isIn(['secured', 'unsecured'])
@@ -374,16 +389,29 @@ router.get('/', protect, [
       ];
     }
 
-    // Role-based filtering
+    // Role-based filtering with organization support
     if (req.user.role === 'agent1') {
       filter.createdBy = req.user._id;
       filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
+      // Agent1 sees only leads from their organization
+      if (req.user.organization) {
+        filter.sourceOrganization = req.user.organization;
+      }
       console.log('Agent1 filter applied:', filter);
     } else if (req.user.role === 'agent2') {
-      // Agent2 can only see leads assigned to them
+      // Agent2 can only see leads assigned to them from any organization
       filter.assignedTo = req.user._id;
       filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
       console.log('Agent2 filter applied:', filter);
+    } else if (req.user.role === 'admin') {
+      // Admin sees all leads from their organization
+      if (req.user.organization) {
+        filter.sourceOrganization = req.user.organization;
+      }
+      console.log('Admin filter applied:', filter);
+    } else if (req.user.role === 'superadmin') {
+      // SuperAdmin sees all leads (no additional filter)
+      console.log('SuperAdmin - no additional filters applied');
     }
 
     console.log('Final filter:', filter);
@@ -395,6 +423,8 @@ router.get('/', protect, [
       .populate('updatedBy', 'name email')
       .populate('assignedTo', 'name email')
       .populate('assignedBy', 'name email')
+      .populate('sourceOrganization', 'name organizationType')
+      .populate('assignedToOrganization', 'name organizationType')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -504,15 +534,15 @@ router.get('/:id', protect, async (req, res) => {
 
 // @desc    Create new lead
 // @route   POST /api/leads
-// @access  Private (Agent1 only)
+// @access  Private (Agent1, Admin, SuperAdmin only)
 router.post('/', protect, createLeadValidation, handleValidationErrors, async (req, res) => {
   try {
     console.log('Create lead request body:', req.body);
     console.log('Create lead request user:', req.user ? req.user.role : 'No user');
     console.log('Create lead request user ID:', req.user ? req.user._id : 'No user ID');
     
-    // Check if user has permission (agent1 or admin)
-    if (req.user && !['agent1', 'admin'].includes(req.user.role)) {
+    // Check if user has permission (agent1, admin, or superadmin)
+    if (req.user && !['agent1', 'admin', 'superadmin'].includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: `User role ${req.user.role} is not authorized to create leads`
@@ -522,8 +552,28 @@ router.post('/', protect, createLeadValidation, handleValidationErrors, async (r
     const leadData = {
       ...req.body,
       source: req.body.source && req.body.source.trim() !== '' ? req.body.source : 'Personal Debt',
-      createdBy: req.user._id
+      createdBy: req.user._id,
+      sourceOrganization: req.user.organization || null
     };
+
+    // Normalize phone numbers to +1 format
+    if (leadData.phone) {
+      const cleaned = leadData.phone.replace(/[\s\-\(\)]/g, '');
+      if (/^\d{10}$/.test(cleaned)) {
+        leadData.phone = `+1${cleaned}`;
+      } else if (/^\+1\d{10}$/.test(cleaned)) {
+        leadData.phone = cleaned;
+      }
+    }
+    
+    if (leadData.alternatePhone) {
+      const cleaned = leadData.alternatePhone.replace(/[\s\-\(\)]/g, '');
+      if (/^\d{10}$/.test(cleaned)) {
+        leadData.alternatePhone = `+1${cleaned}`;
+      } else if (/^\+1\d{10}$/.test(cleaned)) {
+        leadData.alternatePhone = cleaned;
+      }
+    }
 
     console.log('Creating lead with data:', leadData);
 
@@ -637,7 +687,25 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
         console.log(`Updating ${field} to:`, req.body[field]);
-        lead[field] = req.body[field];
+        
+        // Normalize phone numbers to +1 format
+        if (field === 'phone' || field === 'alternatePhone') {
+          const phoneValue = req.body[field];
+          if (phoneValue && typeof phoneValue === 'string') {
+            const cleaned = phoneValue.replace(/[\s\-\(\)]/g, '');
+            if (/^\d{10}$/.test(cleaned)) {
+              lead[field] = `+1${cleaned}`;
+            } else if (/^\+1\d{10}$/.test(cleaned)) {
+              lead[field] = cleaned;
+            } else {
+              lead[field] = phoneValue; // Keep original if doesn't match pattern
+            }
+          } else {
+            lead[field] = phoneValue;
+          }
+        } else {
+          lead[field] = req.body[field];
+        }
       }
     });
 
@@ -690,10 +758,14 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
 
 // @desc    Delete lead
 // @route   DELETE /api/leads/:id
-// @access  Private (Admin only)
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+// @access  Private (Admin and SuperAdmin only)
+router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
-    const lead = await Lead.findByLeadId(req.params.id);
+    // Try to find by leadId first, then by _id
+    let lead = await Lead.findOne({ leadId: req.params.id });
+    if (!lead) {
+      lead = await Lead.findById(req.params.id);
+    }
 
     if (!lead) {
       return res.status(404).json({
@@ -702,11 +774,12 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
       });
     }
 
-    await Lead.findOneAndDelete({ leadId: req.params.id });
+    // Delete the lead
+    await Lead.findByIdAndDelete(lead._id);
 
     // Emit real-time update
     req.io.emit('leadDeleted', {
-      leadId: req.params.id,
+      leadId: lead.leadId || lead._id,
       deletedBy: req.user.name
     });
     // Also emit to specific rooms
@@ -1070,6 +1143,193 @@ router.get('/dashboard/follow-ups', protect, authorize('agent2', 'admin'), async
     res.status(500).json({
       success: false,
       message: 'Error fetching follow-ups',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Assign lead to Reddington Agent2
+// @route   PUT /api/leads/:id/assign-to-agent2
+// @access  Private (Agent1, Admin, SuperAdmin only)
+router.put('/:id/assign-to-agent2', protect, async (req, res) => {
+  try {
+    const { agent2Id, assignmentNotes } = req.body;
+    
+    // Check if user has permission
+    if (!['agent1', 'admin', 'superadmin'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to assign leads'
+      });
+    }
+
+    // Find the lead
+    const lead = await Lead.findByLeadId(req.params.id);
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found'
+      });
+    }
+
+    // Verify the agent2 exists and is from Reddington organization
+    const agent2 = await User.findById(agent2Id).populate('organization');
+    if (!agent2) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agent2 not found'
+      });
+    }
+
+    if (agent2.role !== 'agent2') {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected user is not an Agent2'
+      });
+    }
+
+    if (agent2.organization.organizationType !== 'main') {
+      return res.status(400).json({
+        success: false,
+        message: 'Agent2 must be from the main organization (Reddington)'
+      });
+    }
+
+    // Check if the current user can assign this lead
+    if (req.user.role === 'agent1' && lead.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Agent1 can only assign leads they created'
+      });
+    }
+
+    // Update the lead with assignment information
+    lead.assignedTo = agent2Id;
+    lead.assignedBy = req.user._id;
+    lead.assignedAt = new Date();
+    lead.assignmentNotes = assignmentNotes || '';
+    lead.assignedToOrganization = agent2.organization._id;
+    lead.status = 'assigned';
+
+    await lead.save();
+
+    // Populate the lead with assignment details
+    await lead.populate([
+      { path: 'assignedTo', select: 'name email' },
+      { path: 'assignedBy', select: 'name email' },
+      { path: 'sourceOrganization', select: 'name' },
+      { path: 'assignedToOrganization', select: 'name' }
+    ]);
+
+    // Emit real-time update
+    if (req.io) {
+      req.io.emit('leadAssigned', {
+        lead: lead,
+        assignedBy: req.user.name,
+        assignedTo: agent2.name
+      });
+      
+      // Notify specific roles
+      req.io.to('admin').emit('leadAssigned', {
+        lead: lead,
+        assignedBy: req.user.name,
+        assignedTo: agent2.name
+      });
+      
+      req.io.to('agent2').emit('leadAssigned', {
+        lead: lead,
+        assignedBy: req.user.name,
+        assignedTo: agent2.name
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lead successfully assigned to Agent2',
+      data: { lead }
+    });
+
+  } catch (error) {
+    console.error('Assign lead error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning lead',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get leads by organization with role-based filtering
+// @route   GET /api/leads/organization/:orgId
+// @access  Private
+router.get('/organization/:orgId', protect, async (req, res) => {
+  try {
+    const { role, organization } = req.user;
+    const requestedOrgId = req.params.orgId;
+
+    // Permission checks
+    if (role === 'superadmin') {
+      // SuperAdmin can view all organizations
+    } else if (role === 'admin') {
+      // Admin can only view their own organization
+      if (organization.toString() !== requestedOrgId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Admin can only view leads from their own organization'
+        });
+      }
+    } else if (role === 'agent1') {
+      // Agent1 can only view their own organization
+      if (organization.toString() !== requestedOrgId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Agent1 can only view leads from their own organization'
+        });
+      }
+    } else if (role === 'agent2') {
+      // Agent2 can view leads assigned to them from any organization
+      const leads = await Lead.find({ assignedTo: req.user._id })
+        .populate('createdBy', 'name email')
+        .populate('assignedBy', 'name email')
+        .populate('sourceOrganization', 'name')
+        .populate('assignedToOrganization', 'name')
+        .sort({ createdAt: -1 });
+
+      return res.status(200).json({
+        success: true,
+        data: { leads }
+      });
+    }
+
+    // Build query based on role
+    let query = {};
+    
+    if (role === 'admin' || role === 'agent1') {
+      // Show leads from their organization
+      query.sourceOrganization = requestedOrgId;
+    } else if (role === 'superadmin') {
+      // Show leads from the requested organization
+      query.sourceOrganization = requestedOrgId;
+    }
+
+    const leads = await Lead.find(query)
+      .populate('createdBy', 'name email')
+      .populate('assignedTo', 'name email')
+      .populate('assignedBy', 'name email')
+      .populate('sourceOrganization', 'name')
+      .populate('assignedToOrganization', 'name')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: { leads }
+    });
+
+  } catch (error) {
+    console.error('Get organization leads error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching organization leads',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

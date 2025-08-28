@@ -620,6 +620,45 @@ router.delete('/admins/:id', protect, async (req, res) => {
   }
 });
 
+// @desc    Delete agent (SuperAdmin only)
+// @route   DELETE /api/auth/agents/:id
+// @access  Private (SuperAdmin only)
+router.delete('/agents/:id', protect, async (req, res) => {
+  try {
+    // Check if user is superadmin
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmin can delete agent accounts'
+      });
+    }
+
+    const agent = await User.findById(req.params.id);
+
+    if (!agent || !['agent1', 'agent2'].includes(agent.role)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agent not found'
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Agent deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete agent error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting agent',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 // @desc    Update admin status (SuperAdmin only)
 // @route   PUT /api/auth/admins/:id/status
 // @access  Private (SuperAdmin only)
@@ -659,6 +698,63 @@ router.put('/admins/:id/status', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error updating admin status',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get Reddington Agent2s for assignment
+// @route   GET /api/auth/reddington-agent2s
+// @access  Private (Agent1, Admin, SuperAdmin only)
+router.get('/reddington-agent2s', protect, async (req, res) => {
+  try {
+    // Check authorization
+    if (!['agent1', 'admin', 'superadmin'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view Agent2s'
+      });
+    }
+
+    // Find Reddington organization (main organization)
+    const Organization = require('../models/Organization');
+    const reddingtonOrg = await Organization.findOne({ 
+      organizationType: 'main',
+      isActive: true 
+    });
+
+    if (!reddingtonOrg) {
+      return res.status(404).json({
+        success: false,
+        message: 'Main organization (Reddington) not found'
+      });
+    }
+
+    // Get all active Agent2s from Reddington organization
+    const agent2s = await User.find({
+      role: 'agent2',
+      organization: reddingtonOrg._id,
+      isActive: true
+    })
+    .select('name email')
+    .populate('organization', 'name');
+
+    res.status(200).json({
+      success: true,
+      data: { 
+        agent2s,
+        organization: {
+          _id: reddingtonOrg._id,
+          name: reddingtonOrg.name
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Reddington Agent2s error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching Agent2s',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

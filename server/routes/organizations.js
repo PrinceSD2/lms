@@ -13,31 +13,80 @@ const organizationValidation = [
     .trim()
     .isLength({ min: 2, max: 100 })
     .withMessage('Organization name must be between 2 and 100 characters'),
-  body('description')
-    .optional()
+  
+  body('ownerName')
     .trim()
-    .isLength({ max: 500 })
-    .withMessage('Description cannot exceed 500 characters'),
-  body('address')
-    .optional()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Owner name is required and cannot exceed 100 characters'),
+  
+  body('spokPersonName')
     .trim()
-    .isLength({ max: 200 })
-    .withMessage('Address cannot exceed 200 characters'),
-  body('phone')
-    .optional()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Spokesperson name is required and cannot exceed 100 characters'),
+  
+  body('spokPersonPhone')
     .trim()
-    .isLength({ max: 20 })
-    .withMessage('Phone cannot exceed 20 characters'),
-  body('email')
-    .optional()
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please enter a valid email'),
-  body('website')
+    .isLength({ min: 8, max: 25 })
+    .matches(/^[\+]?[\d\s\-\(\)\.]+$/)
+    .withMessage('Please enter a valid phone number (8-25 characters, numbers and common symbols only)'),
+  
+  body('expectedConnections')
+    .isInt({ min: 1 })
+    .withMessage('Expected connections must be a positive number'),
+  
+  body('country')
+    .trim()
+    .isIn(['India', 'Philippines', 'Zimbabwe'])
+    .withMessage('Country must be India, Philippines, or Zimbabwe'),
+  
+  body('state')
     .optional()
     .trim()
     .isLength({ max: 100 })
-    .withMessage('Website cannot exceed 100 characters')
+    .withMessage('State cannot exceed 100 characters'),
+  
+  body('city')
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('City name cannot exceed 50 characters'),
+  
+  body('pincode')
+    .optional()
+    .trim()
+    .custom((value, { req }) => {
+      if (!value) return true; // Optional field
+      
+      const country = req.body.country?.toLowerCase();
+      
+      switch (country) {
+        case 'india':
+          return /^[1-9][0-9]{5}$/.test(value);
+        case 'philippines':
+          return /^[0-9]{4}$/.test(value);
+        case 'zimbabwe':
+          return /^[A-Za-z0-9\s]{3,10}$/.test(value);
+        default:
+          return /^[A-Za-z0-9\s\-]{3,10}$/.test(value);
+      }
+    })
+    .withMessage('Please enter a valid postal code for the selected country'),
+  
+  body('address')
+    .optional()
+    .trim()
+    .isLength({ max: 300 })
+    .withMessage('Address cannot exceed 300 characters'),
+  
+  body('website')
+    .optional()
+    .trim()
+    .custom((value) => {
+      if (!value || value === '') return true; // Allow empty
+      // Simple URL validation that's more lenient
+      return /^https?:\/\/.+\..+/.test(value);
+    })
+    .withMessage('Please enter a valid website URL starting with http:// or https://')
 ];
 
 const userValidation = [
@@ -51,9 +100,7 @@ const userValidation = [
     .withMessage('Please enter a valid email'),
   body('password')
     .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number'),
+    .withMessage('Password must be at least 6 characters long'),
   body('role')
     .isIn(['admin', 'agent1', 'agent2'])
     .withMessage('Role must be admin, agent1, or agent2')
@@ -64,15 +111,34 @@ const userValidation = [
 // @access  Private (SuperAdmin only)
 router.post('/', protect, organizationValidation, handleValidationErrors, async (req, res) => {
   try {
+    console.log('=== ORGANIZATION CREATION REQUEST ===');
+    console.log('User:', req.user ? { id: req.user._id, role: req.user.role } : 'No user');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    console.log('=====================================');
+
     // Check if user is superadmin
     if (req.user.role !== 'superadmin') {
+      console.log('Access denied: User role is', req.user.role);
       return res.status(403).json({
         success: false,
         message: 'Only superadmin can create organizations'
       });
     }
 
-    const { name, description, address, phone, email, website } = req.body;
+    const { 
+      name, 
+      ownerName,
+      spokPersonName,
+      spokPersonPhone,
+      expectedConnections,
+      country,
+      state,
+      city,
+      pincode,
+      address,
+      website,
+      organizationType = 'client'
+    } = req.body;
 
     // Check if organization with this name already exists
     const existingOrg = await Organization.findOne({ 
@@ -89,11 +155,17 @@ router.post('/', protect, organizationValidation, handleValidationErrors, async 
     // Create organization
     const organization = await Organization.create({
       name,
-      description,
+      ownerName,
+      spokPersonName,
+      spokPersonPhone,
+      expectedConnections,
+      country,
+      state,
+      city,
+      pincode,
       address,
-      phone,
-      email,
       website,
+      organizationType,
       createdBy: req.user._id
     });
 
@@ -107,7 +179,34 @@ router.post('/', protect, organizationValidation, handleValidationErrors, async 
     });
 
   } catch (error) {
-    console.error('Create organization error:', error);
+    console.error('=== CREATE ORGANIZATION ERROR ===');
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('================================');
+    
+    // Handle specific MongoDB errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message,
+        value: err.value
+      }));
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+    
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Organization with this name already exists'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error creating organization',
@@ -231,6 +330,57 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
+// @desc    Toggle organization status (SuperAdmin only)
+// @route   PUT /api/organizations/:id/status
+// @access  Private (SuperAdmin only)
+router.put('/:id/status', protect, async (req, res) => {
+  console.log('=== STATUS TOGGLE ROUTE HIT ===');
+  console.log('Organization ID:', req.params.id);
+  console.log('Request body:', req.body);
+  
+  try {
+    // Check if user is superadmin
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmin can update organization status'
+      });
+    }
+
+    const { isActive } = req.body;
+
+    // Check if organization exists
+    const organization = await Organization.findById(req.params.id);
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: 'Organization not found'
+      });
+    }
+
+    // Update only the status
+    const updatedOrganization = await Organization.findByIdAndUpdate(
+      req.params.id,
+      { isActive },
+      { new: true, runValidators: false }
+    ).populate('createdBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: `Organization ${isActive ? 'activated' : 'deactivated'} successfully`,
+      data: updatedOrganization
+    });
+
+  } catch (error) {
+    console.error('Toggle organization status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating organization status',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 // @desc    Update organization (SuperAdmin only)
 // @route   PUT /api/organizations/:id
 // @access  Private (SuperAdmin only)
@@ -244,7 +394,20 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive } = req.body;
+    const { 
+      name, 
+      ownerName,
+      spokPersonName,
+      spokPersonPhone,
+      expectedConnections,
+      country,
+      state,
+      city,
+      pincode,
+      address,
+      website,
+      isActive 
+    } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -275,10 +438,15 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       req.params.id,
       {
         name,
-        description,
+        ownerName,
+        spokPersonName,
+        spokPersonPhone,
+        expectedConnections,
+        country,
+        state,
+        city,
+        pincode,
         address,
-        phone,
-        email,
         website,
         isActive
       },
@@ -556,6 +724,113 @@ router.delete('/:orgId/users/:userId', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting user',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get users of an organization
+// @route   GET /api/organizations/:id/users
+// @access  Private (SuperAdmin only)
+router.get('/:id/users', protect, async (req, res) => {
+  try {
+    // Check if user is superadmin
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmin can view organization users'
+      });
+    }
+
+    const orgId = req.params.id;
+
+    // Verify organization exists
+    const organization = await Organization.findById(orgId);
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: 'Organization not found'
+      });
+    }
+
+    // Get all users from this organization
+    const users = await User.find({ 
+      organization: orgId 
+    })
+    .select('name email role isActive createdAt lastLogin')
+    .populate('organization', 'name')
+    .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: {
+        users,
+        organization: {
+          _id: organization._id,
+          name: organization.name,
+          organizationType: organization.organizationType
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get organization users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching organization users',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get users of an organization
+// @route   GET /api/organizations/:id/users
+// @access  Private (SuperAdmin only)
+router.get('/:id/users', protect, async (req, res) => {
+  try {
+    // Check if user is superadmin
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmin can view organization users'
+      });
+    }
+
+    const organizationId = req.params.id;
+
+    // Verify organization exists
+    const organization = await Organization.findById(organizationId);
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: 'Organization not found'
+      });
+    }
+
+    // Get users for this organization
+    const users = await User.find({ organization: organizationId })
+      .select('name email role isActive createdAt')
+      .populate('organization', 'name')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        users,
+        organization: {
+          _id: organization._id,
+          name: organization.name,
+          organizationType: organization.organizationType
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get organization users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching organization users',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

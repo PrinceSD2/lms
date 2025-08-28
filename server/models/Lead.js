@@ -29,10 +29,11 @@ const leadSchema = new mongoose.Schema({
         if (!v) return true; // allow missing/undefined
         const str = String(v).trim();
         if (str === '') return true; // treat empty as not provided
-        // Validate +1 followed by exactly 10 digits
-        return /^\+1\d{10}$/.test(str);
+        // Accept both +1234567890 and 1234567890 formats
+        const cleaned = str.replace(/[\s\-\(\)]/g, '');
+        return /^(\+1)?\d{10}$/.test(cleaned);
       },
-      message: 'Phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'
+      message: 'Phone number must be 10 digits (e.g., 2345678901 or +12345678901)'
     }
   },
   alternatePhone: {
@@ -43,10 +44,11 @@ const leadSchema = new mongoose.Schema({
         if (!v) return true; // allow missing/undefined
         const str = String(v).trim();
         if (str === '') return true; // treat empty as not provided
-        // Validate +1 followed by exactly 10 digits
-        return /^\+1\d{10}$/.test(str);
+        // Accept both +1234567890 and 1234567890 formats
+        const cleaned = str.replace(/[\s\-\(\)]/g, '');
+        return /^(\+1)?\d{10}$/.test(cleaned);
       },
-      message: 'Alternate phone number must be in format +1 followed by 10 digits (e.g., +12345678901)'
+      message: 'Alternate phone number must be 10 digits (e.g., 2345678901 or +12345678901)'
     }
   },
   
@@ -273,6 +275,17 @@ const leadSchema = new mongoose.Schema({
     maxlength: [500, 'Assignment notes cannot exceed 500 characters']
   },
   
+  // Organization tracking
+  sourceOrganization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    required: true
+  },
+  assignedToOrganization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization'
+  },
+  
   // Priority (derived from category)
   priority: {
     type: String,
@@ -317,19 +330,41 @@ const generateLeadId = async function() {
   const year = currentDate.getFullYear().toString().slice(-2);
   const month = String(currentDate.getMonth() + 1).padStart(2, '0');
   
-  // Get count of leads created today
-  const startOfDay = new Date(currentDate);
-  startOfDay.setHours(0, 0, 0, 0);
+  let isUnique = false;
+  let attempts = 0;
+  let leadId;
   
-  const endOfDay = new Date(currentDate);
-  endOfDay.setHours(23, 59, 59, 999);
+  while (!isUnique && attempts < 10) {
+    // Get count of leads created today
+    const startOfDay = new Date(currentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(currentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const todayLeadsCount = await this.constructor.countDocuments({
+      createdAt: { $gte: startOfDay, $lte: endOfDay }
+    });
+    
+    const sequence = String(todayLeadsCount + 1 + attempts).padStart(4, '0');
+    leadId = `LEAD${year}${month}${sequence}`;
+    
+    // Check if this leadId already exists
+    const existingLead = await this.constructor.findOne({ leadId });
+    if (!existingLead) {
+      isUnique = true;
+    } else {
+      attempts++;
+    }
+  }
   
-  const todayLeadsCount = await this.constructor.countDocuments({
-    createdAt: { $gte: startOfDay, $lte: endOfDay }
-  });
+  if (!isUnique) {
+    // Fallback to timestamp-based ID if we can't generate unique ID
+    const timestamp = Date.now().toString().slice(-6);
+    leadId = `LEAD${year}${month}${timestamp}`;
+  }
   
-  const sequence = String(todayLeadsCount + 1).padStart(4, '0');
-  return `LEAD${year}${month}${sequence}`;
+  return leadId;
 };
 
 // Pre-save middleware to generate leadId and calculate completion percentage and category
@@ -338,8 +373,10 @@ leadSchema.pre('save', async function(next) {
   if (this.isNew && !this.leadId) {
     try {
       this.leadId = await generateLeadId.call(this);
+      console.log('Generated leadId:', this.leadId);
     } catch (error) {
-      return next(error);
+      console.error('Error generating leadId:', error);
+      return next(new Error('Failed to generate unique lead ID'));
     }
   }
 
